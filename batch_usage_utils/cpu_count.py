@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 from astropy.time import Time, TimeDelta
 
+__all__ = ("CpuCount",)
+
 
 def utc_offset(pacific_time):
     """Return the astropy.time.TimeDelta offset to add to
@@ -42,22 +44,26 @@ class CpuCount:
             data['end_mjd'].append(end_mjd)
             data['node'].append(tokens[8])
         self.df0 = pd.DataFrame(data)
-        self._setup_arrays()
 
-    def _setup_arrays(self):
-        times = sorted(np.concatenate((self.df0['start_mjd'].to_numpy(),
-                                       self.df0['end_mjd'].to_numpy())))
-        times = np.unique(times)
-        num_cpus = [sum(self.df0.query(f"start_mjd <= {_} <= end_mjd")
-                        ['alloc_cpus']) for _ in times]
+    def _setup_arrays(self, task_df=None):
+        if task_df is not None:
+            node_list = sorted(set(task_df['worker']))
+            df = self.df0.query(f"node in {node_list}")
 
-        self.times = [times[0]]
-        self.num_cpus = [num_cpus[0]]
-        for i in range(1, len(times)):
-            self.times.append(times[i])
-            self.num_cpus.append(num_cpus[i-1])
-            self.times.append(times[i])
-            self.num_cpus.append(num_cpus[i])
+        tvals = sorted(np.concatenate((df['start_mjd'].to_numpy(),
+                                       df['end_mjd'].to_numpy())))
+        tvals = np.unique(tvals)
+        ncpus = [sum(df.query(f"start_mjd <= {_} <= end_mjd")
+                     ['alloc_cpus']) for _ in tvals]
+
+        times = [tvals[0]]
+        num_cpus = [ncpus[0]]
+        for i in range(1, len(tvals)):
+            times.append(tvals[i])
+            num_cpus.append(ncpus[i-1])
+            times.append(tvals[i])
+            num_cpus.append(ncpus[i])
+        return times, num_cpus
 
     @staticmethod
     def make_step_function(xvals, yvals):
@@ -68,15 +74,13 @@ class CpuCount:
             yy.extend((yvals[i-1], yvals[i]))
         return xx, yy
 
-    def interp(self, mjds):
-        return np.interp(mjds, self.times, self.num_cpus)
-
     def __call__(self, mjd):
         df = self.df0.query(f"start_mjd <= {mjd} <= end_mjd")
         return sum(df['alloc_cpus'])
 
     def add_column(self, df):
-        df['cpu_count'] = self.interp(df['start_utc'].to_numpy())
+        times, num_cpus = self._setup_arrays(task_df=df)
+        df['cpu_count'] = np.interp(df['start_utc'].to_numpy(), times, num_cpus)
         return df
 
     @staticmethod

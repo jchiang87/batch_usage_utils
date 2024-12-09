@@ -2,9 +2,12 @@ import os
 from collections import defaultdict
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 from astropy.time import Time
 import lsst.daf.butler as daf_butler
+from lsst.obs.lsst import LsstCam
+
+
+__all__ = ("extract_metadata", "add_ccd_type", "add_nproc", "add_node_info")
 
 
 def extract_metadata(md, data):
@@ -27,39 +30,31 @@ def extract_metadata(md, data):
     return data
 
 
-repo = "embargo_new"
-butler = daf_butler.Butler(repo)
-collections = sorted(butler.registry.queryCollections(
-    "u/lsstccs/ptc_*",
-    collectionTypes=[daf_butler.CollectionType.CHAINED]))
-print(len(collections), flush=True)
+camera = LsstCam.getCamera()
+ccd_type_dict = {det.getId(): det.getPhysicalType() for det in camera}
+def add_ccd_type(df0):
+    df0['ccd_type'] = [ccd_type_dict[_] for _ in df0['detector']]
+    return df0
 
-collections = ["u/jchiang/ptc_E1880_w_2024_48"]
 
-dstype = 'cpPtcIsr_metadata'
+def add_nproc(df0):
+    """Add column with number of running processes at
+    each start_utc time."""
+    times = np.concatenate((df0['start_utc'], df0['end_utc']))
+    deltas = np.concatenate((np.ones(len(df0)), -np.ones(len(df0))))
+    df = pd.DataFrame(dict(times=times, deltas=deltas)).sort_values('times')
+    df['nproc'] = np.cumsum(df['deltas'])
+    df0['nproc'] = df.query("deltas==1")['nproc']
+    return df0
 
-for collection in collections[:1]:
-    acq_run = os.path.basename(collection).split('_')[1]
-    outfile = f"{dstype}_{acq_run}_md_stats_isrTaskLSST.parquet"
-    if os.path.isfile(outfile):
-        continue
-    refs = list(butler.registry.queryDatasets(dstype, collections=collection))
-    print(collection, len(refs), flush=True)
-    data = defaultdict(list)
-    i = 0
-#    for ref in tqdm(refs):
-    for ref in refs:
-        i += 1
-        if i % (len(refs)//20) == 0:
-            print('.', end="", flush=True)
-        md = butler.get(ref)
-        try:
-            data = extract_metadata(md, data)
-        except:
-            continue
-        data['acq_run'].append(acq_run)
-        for key in ("detector", "exposure"):
-            data[key].append(ref.dataId[key])
-    print("!", flush=True)
-    df0 = pd.DataFrame(data)
-    df0.to_parquet(outfile)
+
+def add_node_info(df0, node_info):
+    if 'detector' in node_info:
+        node_map = dict(zip(zip(node_info['exposure'], node_info['detector']),
+                            node_info['worker']))
+        df0['worker'] = [node_map[key] for key in
+                         zip(df0['exposure'], df0['detector'])]
+    else:
+        node_map = dict(zip(node_info['exposure'], node_info['worker']))
+        df0['worker'] = [node_map[key] for key in df0['exposure']]
+    return df0
