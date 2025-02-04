@@ -25,8 +25,9 @@ def plot_batch_stats(df0, figsize=(10, 15), title=None):
     plt.subplot(ny, nx, 2)
     plt.scatter(start_utc, np.cumsum(dt*df0['cpu_count']), s=2,
                 label='alloc_cpus*dt')
-    plt.scatter(start_utc, np.cumsum(dt*df0['nproc']), s=2,
-                label='nproc*dt')
+#    dt_nproc = (df0['end_utc'].to_numpy() - start_utc)
+#    plt.scatter(start_utc, np.cumsum(dt_nproc*df0['nproc']), s=2,
+#                label='nproc*dt')
     plt.xlabel(f'start_utc (24*(MJD - {mjd0}))')
     plt.ylabel('# instances * time')
     plt.legend(fontsize='x-small')

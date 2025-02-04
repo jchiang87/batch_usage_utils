@@ -17,13 +17,13 @@ class PandaJobInfo:
         config = BpsConfig(BPS_DEFAULTS)
         self.idds_client = get_idds_client(config)
 
-    def get_job_info(self, workflow_ids, outfile=None, verbose=False):
-        """Get job info for a list of workflow_ids.
+    def get_job_info(self, task_ids, outfile=None, verbose=False):
+        """Get job info for a list of task_ids.
 
         Paramters
         ---------
-        workflow_ids : list
-            List of PanDA workflow IDs.
+        task_ids : list
+            List of PanDA task IDs.
         outfile : str [None]
             Name of parquet file to write out the data frame.  If None,
             then don't write a file.
@@ -36,17 +36,10 @@ class PandaJobInfo:
         """
         t0 = time.time()
         dfs = []
-        for workflow_id in workflow_ids:
-            print(workflow_id, (time.time() - t0) / 60.0, flush=True)
-            results = self.idds_client.get_requests(
-                request_id=workflow_id, with_detail=True
-            )
-            task_ids = [_["transform_workload_id"] for _ in results[1][1]]
-            for task_id in task_ids:
-                _, panda_ids = Client.getPandaIDsWithTaskID(task_id)
-                df = self._fill_job_info_dataframe(panda_ids, verbose)
-                df["workflow_id"] = len(df) * [workflow_id]
-                dfs.append(df)
+        for task_id in task_ids:
+            _, panda_ids = Client.getPandaIDsWithTaskID(task_id)
+            df = self._fill_job_info_dataframe(panda_ids, verbose)
+            dfs.append(df)
         df0 = pd.concat(dfs)
         if outfile is not None:
             df0.to_parquet(outfile)

@@ -9,6 +9,9 @@ import lsst.daf.butler as daf_butler
 import lsst.pipe.base as pipe_base
 
 
+__all__ = ["QGExtract", "get_run_collections", "quantum_graph_file"]
+
+
 class QGExtract:
     def __init__(self, qg_file):
         self.qg = pipe_base.QuantumGraph.loadUri(qg_file)
@@ -33,6 +36,8 @@ class QGExtract:
         return pd.DataFrame(data)
 
     def _add_task_specific_info(self, node, data, task):
+        if task not in self._task_node_func_maps:
+            return
         node_func_maps = self._task_node_func_maps[task]
         for column, node_func in node_func_maps.items():
             data[column].append(node_func(node))
@@ -54,11 +59,10 @@ def get_run_collections(repo, parent_collection, target_task):
             f"{parent_collection}/202*", collectionTypes=daf_butler.CollectionType.RUN
         )
     )
-    breakpoint()
     target_collections = []
     for run_collection in run_collections:
         try:
-            butler.query_datasets(f"{target_task}_metadata", collections=run_collection)
+            butler.registry.queryDatasets(f"{target_task}_metadata", collections=run_collection)
         except daf_butler.EmptyQueryResultError:
             continue
         else:

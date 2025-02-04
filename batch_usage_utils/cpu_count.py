@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from astropy.time import Time, TimeDelta
 
-__all__ = ("CpuCount",)
+__all__ = ("CpuCount", "utc_offset")
 
 
 def utc_offset(pacific_time):
@@ -30,16 +30,19 @@ class CpuCount:
             if "glide_" not in line:
                 continue
             tokens = line.split()
+            try:
+                elapsed_time = self.parse_elapsed_time(tokens[4])
+                start_time = Time(tokens[7])
+                offset = utc_offset(start_time)
+                start_mjd = (start_time + offset).mjd
+                end_mjd = start_mjd + elapsed_time/86400.
+            except:
+                continue
             data['job_id'].append(tokens[0])
             data['partition'].append(tokens[2])
             data['alloc_cpus'].append(int(tokens[3]))
-            elapsed_time = self.parse_elapsed_time(tokens[4])
             data['elapsed_time'].append(elapsed_time)
-            start_time = Time(tokens[7])
-            offset = utc_offset(start_time)
             data['start_time'].append(start_time + offset)
-            start_mjd = (start_time + offset).mjd
-            end_mjd = start_mjd + elapsed_time/86400.
             data['start_mjd'].append(start_mjd)
             data['end_mjd'].append(end_mjd)
             data['node'].append(tokens[8])
