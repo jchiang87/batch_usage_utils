@@ -17,7 +17,7 @@ def extract_metadata(md, data):
     prefixes = ("prep", "init", "start", "end")
     info = md['quantum']
     # Wall times
-    times = np.array([Time(info[f"{_}Utc"][:26]) for _ in ("prep", "end")])
+    times = np.array([Time(info[f"{_}Utc"].split('+')[0]) for _ in ("prep", "end")])
     dt = times[1:] - times[:-1]
     for prefix, dt in zip(("run", "init", "run"), dt):
         data[f"{prefix}_wall_time"].append(dt.sec)
@@ -43,8 +43,11 @@ def extract_metadata(md, data):
     if 'nodeName' in info:
         data['node_name'].append(info['nodeName'])
         data['cpu_count'].append(info['nodeCpuCount'])
-        data['cpu_percent'].append(info['endNodeCpuPercent'])
-        data['node_load_avg'].append(info['endNodeLoadAverage'])
+        try:
+            data['cpu_percent'].append(info['endNodeCpuPercent'])
+            data['node_load_avg'].append(info['endNodeLoadAverage'])
+        except KeyError:
+            pass
     return data
 
 
