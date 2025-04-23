@@ -4,3 +4,5 @@ from .cpu_count import *
 from .plot_batch_stats import *
 from .extract_panda_info import *
 from .extract_qg_info import *
+from .plotting_utils import *
+from .core_occupancy_plots import *

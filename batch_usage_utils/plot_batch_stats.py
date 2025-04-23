@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 __all__ = ("plot_batch_stats",)
 
 
-def plot_batch_stats(df0, figsize=(10, 15), title=None):
+def plot_batch_stats(df0, figsize=(10, 15), title=None, num_workers=None):
     plt.figure(figsize=figsize)
     ny, nx = 3, 2
 
@@ -35,7 +35,9 @@ def plot_batch_stats(df0, figsize=(10, 15), title=None):
     ccd_types = sorted(set(df0['ccd_type']))
     workers = sorted(set(df0['worker']))
     plt.subplot(ny, nx, 3)
-    for worker in workers:
+    if num_workers is None:
+        num_workers = len(workers)
+    for worker in workers[:num_workers]:
         df = df0.query(f"worker == '{worker}'")
         plt.scatter(24*(df['start_utc'] - mjd0), df['run_wall_time'], s=2,
                     label=worker)
