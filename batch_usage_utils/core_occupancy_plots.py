@@ -10,14 +10,20 @@ __all__ = ["get_memory_factors", "plot_concurrent_jobs",
 
 
 def get_memory_factors(memory_config_file, clustering_file,
-                       mem_per_core=4000.0):
+                       mem_per_core=4000.0, use_exact_request=True):
     # Get the pipetask-specific values.
     with open(memory_config_file, "r") as fobj:
         config = yaml.safe_load(fobj)["pipetask"]
-        memory_factors = {
-            key: np.ceil(value["requestMemory"] / mem_per_core)
-            for key, value in config.items()
-        }
+        if use_exact_request:
+            memory_factors = {
+                key: value["requestMemory"] / mem_per_core
+                for key, value in config.items()
+            }
+        else:
+            memory_factors = {
+                key: np.ceil(value["requestMemory"] / mem_per_core)
+                for key, value in config.items()
+            }
     # Adjust for clustering.
     with open(clustering_file, "r") as fobj:
         config = yaml.safe_load(fobj)["cluster"]
@@ -66,7 +72,7 @@ def plot_slurm_allocation(slurm_csv_file, color=None, label=None, alpha=1.0,
 def workflow_summary_plot(md_files, slurm_job_file=None,
                           htcondor_job_file=None, title=None,
                           memory_factors=None, time_col_suffix='dt',
-                          show_legend=True):
+                          show_legend=True, utc_range=None):
     dfs = []
     tasks = []
     md_all = dict()
@@ -75,13 +81,18 @@ def workflow_summary_plot(md_files, slurm_job_file=None,
             md = pickle.load(fobj)
         md_all.update(md)
         for task, df0 in md.items():
-            tasks.append(task)
-            df0['task'] = [task]*len(df0)
-            dfs.append(df0[["task", "start_dt", "end_dt", "start_utc",
-                            "end_utc", "run_cpu_time", "run_wall_time",
-                            "max_rss"]])
+            if task not in tasks:
+                tasks.append(task)
+            if len(df0) > 0:
+                df0['task'] = [task]*len(df0)
+                dfs.append(df0[["task", "start_dt", "end_dt", "start_utc",
+                                "end_utc", "run_cpu_time", "run_wall_time",
+                                "max_rss"]])
     df0 = pd.concat(dfs)
-    for task in tasks:
+    if utc_range is not None:
+        df0 = df0.query(f"{utc_range[0]} < start_utc < {utc_range[1]}")
+        tasks = [_ for _ in tasks if _ in set(df0['task'])]
+    for i, task in enumerate(tasks):
         df = df0.query(f"task == '{task}'")
         plot_concurrent_jobs(df, label=task, memory_factors=memory_factors,
                              time_col_suffix=time_col_suffix)
@@ -94,7 +105,8 @@ def workflow_summary_plot(md_files, slurm_job_file=None,
         plot_slurm_allocation(slurm_job_file, label='slurm allocation')
     if htcondor_job_file is not None:
         plot_slurm_allocation(htcondor_job_file, label='HTCondor jobs',
-                              linestyle='--')
+                              linestyle='--', color='red')
     plt.title(title)
     if show_legend:
         plt.legend(fontsize='x-small', ncol=3, loc="upper left")
+    return df0
