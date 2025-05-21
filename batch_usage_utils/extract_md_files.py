@@ -2,7 +2,9 @@ import os
 from collections import defaultdict
 import pickle
 import subprocess
+import numpy as np
 import pandas as pd
+from astropy import units as u
 from tqdm import tqdm
 import lsst.daf.butler as daf_butler
 from batch_usage_utils import extract_md_json
@@ -17,6 +19,8 @@ class PipelineMetadata(dict):
 
     @staticmethod
     def read_md_files(md_files):
+        if isinstance(md_files, str):
+            md_files = [md_files]
         dfs = {}
         for md_file in md_files:
             with open(md_file, "rb") as fobj:
@@ -28,6 +32,35 @@ class PipelineMetadata(dict):
             raise FileExistsError("{md_file} exists and clobber=False")
         with open(md_file, "wb") as fobj:
             pickle.dump(dict(self), fobj)
+
+    def projected_wall_times(self, ds_sizes=None, num_cores=10000,
+                             runtime_column='run_wall_time'):
+        total_projected = 0
+        total_storage = 0
+        data = defaultdict(list)
+        for task, df in self.items():
+            data['task'].append(task)
+            data['max_memory'].append(np.max(df['max_rss']))
+            max_wt = np.max(df[runtime_column])/3600.*u.h
+            data['max_wall_time'].append(max_wt)
+            data['median_wall_time'].append(
+                np.median(df[runtime_column])/3600.*u.h)
+            mean_wt = np.mean(df[runtime_column]/3600)*u.h
+            data['mean_wall_time'].append(mean_wt)
+            num_jobs = len(df)
+            data['num_jobs'].append(num_jobs)
+            total = num_jobs*mean_wt
+            projected = max(max_wt, total/min(num_cores, num_jobs))
+            data['projected'].append(projected.copy())
+            total_projected += projected
+            print(total_projected)
+            data['total_projected'].append(total_projected.copy())
+            if ds_sizes is not None:
+                storage = num_jobs*ds_sizes[task]/1024**4*u.terabyte
+                data['storage'].append(storage.copy())
+                total_storage += storage
+                data['total_storage'].append(total_storage.copy())
+        return pd.DataFrame(data)
 
 
 def extract_md_files(repo, collection, tasks, outfile=None,
