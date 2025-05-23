@@ -48,6 +48,9 @@ def extract_metadata(md, data):
     if 'butler_metrics' in info:
         for key in ('time_in_put', 'time_in_get', 'n_get', 'n_put'):
             data[key].append(info['butler_metrics'][key])
+    else:
+        for key in ('time_in_put', 'time_in_get', 'n_get', 'n_put'):
+            data[key].append(None)
     return data
 
 
