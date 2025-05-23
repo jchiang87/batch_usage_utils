@@ -12,7 +12,7 @@ def add_datetime(df0, mjd_col, dt_col, offset=7.):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("md_file", dtype=str, help="pipeline metadata file")
+parser.add_argument("md_file", type=str, help="pipeline metadata file")
 args = parser.parse_args()
 
 md_file = args.md_file
