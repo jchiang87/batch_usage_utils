@@ -44,9 +44,9 @@ class QGExtract:
 
     def _set_default_node_maps(self):
         self._task_node_func_maps = {
-            "assembleCoadd": {
+            "assembleDeepCoadd": {
                 "num_warps": lambda node: len(
-                    node.quantum.inputs["deepCoadd_directWarp"]
+                    node.quantum.inputs["direct_warp"]
                 )
             }
         }

@@ -1,0 +1,92 @@
+import time
+import numpy as np
+from graphlib import TopologicalSorter
+from ResourceRequest import ResourceRequest
+
+
+class Cluster:
+    def __init__(self, resource_requester,
+                 nodes=10, cores_per_node=120, mem_per_core=4, dt=10):
+        self.ts = None
+        self.resource_requester = resource_requester
+        self.cores = nodes*cores_per_node
+        self.available_cores = self.cores
+        self.mem_per_core = mem_per_core
+        self.dt = dt
+        self.running_jobs = {}
+        self.current_time = 0
+        self.total_cpu_time = 0
+
+    def add_job(self, job):
+        cpu_time, memory = self.resource_requester(job)
+        requested_cores = max(1, int(np.ceil(memory/self.mem_per_core)))
+        if self.available_cores < requested_cores:
+            return False
+        self.running_jobs[job] = (requested_cores,
+                                  self.current_time + cpu_time,
+                                  cpu_time)
+        self.available_cores -= requested_cores
+        return True
+
+    def update_time(self):
+        self.current_time += self.dt
+        self._compute_available_cores()
+        if sum(_[0] for _ in self.running_jobs.values()) > self.cores:
+            raise RuntimeError("too many running jobs")
+
+    @property
+    def occupied_cores(self):
+        return sum(_[0] for _ in self.running_jobs.values())
+
+    def _compute_available_cores(self):
+        occupied_cores = 0
+        finished_jobs = []
+        for job, (cores, end_time, cpu_time) in self.running_jobs.items():
+            if end_time < self.current_time:
+                finished_jobs.append(job)
+            else:
+                occupied_cores += cores
+        for job in finished_jobs:
+            cores, _, cpu_time = self.running_jobs[job]
+            self.total_cpu_time += cores*cpu_time
+            del self.running_jobs[job]
+            self.ts.done(job)
+        self.available_cores = self.cores - occupied_cores
+
+    def submit(self, graph):
+        self.ts = TopologicalSorter()
+        for job in graph.values():
+            self.ts.add(job, *job.prereqs)
+        self.ts.prepare()
+        t0 = time.time()
+
+        job_sequence = list(self.ts.get_ready())
+        while self.ts.is_active() or self.running_jobs:
+            if ncores := self.available_cores > 0 and job_sequence:
+                indexes = list(range(len(job_sequence)))
+                indexes.reverse()
+                added_jobs = 0
+                for i in indexes:
+                    if self.add_job(job_sequence[i]):
+                        job_sequence.pop(i)
+                        added_jobs += 1
+                    if added_jobs == ncores:
+                        break
+            self.update_time()
+            if self.current_time % 100 == 0:
+                print(self.current_time, self.occupied_cores)
+            job_sequence.extend(self.ts.get_ready())
+        print("simulated wall time:", self.current_time/3600.)
+        print("total cpu time:", self.total_cpu_time/3600.)
+        print("time to run simulation:", time.time() - t0)
+
+
+if __name__ == '__main__':
+    from get_parsl_graph import graph
+
+    md_file = ("/sdf/data/rubin/user/jchiang/on-sky/task_metadata/DRP/"
+               "DRP_20250420_20250429_md.pickle")
+    resource_request = ResourceRequest(md_file)
+
+    cluster = Cluster(resource_request, dt=20, nodes=1)
+    cluster.submit(graph)

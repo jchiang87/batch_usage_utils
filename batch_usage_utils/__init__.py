@@ -7,3 +7,5 @@ from .extract_qg_info import *
 from .plotting_utils import *
 from .core_occupancy_plots import *
 from .extract_md_files import *
+from .workflow_simulation import *
+from .resource_request import *
