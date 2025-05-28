@@ -13,8 +13,8 @@ __all__ = ["QGExtract", "get_run_collections", "quantum_graph_file"]
 
 
 class QGExtract:
-    def __init__(self, qg_file):
-        self.qg = pipe_base.QuantumGraph.loadUri(qg_file)
+    def __init__(self, qg_files):
+        self.qg_files = qg_files
         self._set_default_node_maps()
 
     def update_task_node_func_maps(self, node_func_maps):
@@ -22,17 +22,20 @@ class QGExtract:
 
     def map_uuids(self, tasks=None):
         data = defaultdict(list)
-        for node in tqdm(self.qg.graph.nodes):
-            task = node.taskDef.label
-            if tasks is not None and task not in tasks:
-                continue
-            uuid = str(node.nodeId)
-            dataId = node.quantum.dataId  # noqa: N806
-            dimensions = dataId.dimensions.to_simple()
-            data["uuid"].append(uuid)
-            for dimension in dimensions:
-                data[dimension].append(dataId[dimension])
-            self._add_task_specific_info(node, data, task)
+        for qg_file in self.qg_files:
+            qg = pipe_base.QuantumGraph.loadUri(qg_file)
+            print(qg_file, flush=True)
+            for node in tqdm(qg.graph.nodes):
+                task = node.taskDef.label
+                if tasks is not None and task not in tasks:
+                    continue
+                uuid = str(node.nodeId)
+                dataId = node.quantum.dataId  # noqa: N806
+                dimensions = dataId.dimensions.to_simple()
+                data["uuid"].append(uuid)
+                for dimension in dimensions:
+                    data[dimension].append(dataId[dimension])
+                self._add_task_specific_info(node, data, task)
         return pd.DataFrame(data)
 
     def _add_task_specific_info(self, node, data, task):

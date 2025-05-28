@@ -1,14 +1,15 @@
 import time
 import numpy as np
 from graphlib import TopologicalSorter
-from ResourceRequest import ResourceRequest
+
+__all__ = ["ComputingCluster"]
 
 
-class Cluster:
-    def __init__(self, resource_requester,
-                 nodes=10, cores_per_node=120, mem_per_core=4, dt=10):
+class ComputingCluster:
+    def __init__(self, resource_usage, nodes=10, cores_per_node=120,
+                 mem_per_core=4, dt=10):
         self.ts = None
-        self.resource_requester = resource_requester
+        self.resource_usage = resource_usage
         self.cores = nodes*cores_per_node
         self.available_cores = self.cores
         self.mem_per_core = mem_per_core
@@ -18,7 +19,7 @@ class Cluster:
         self.total_cpu_time = 0
 
     def add_job(self, job):
-        cpu_time, memory = self.resource_requester(job)
+        cpu_time, memory = self.resource_usage(job)
         requested_cores = max(1, int(np.ceil(memory/self.mem_per_core)))
         if self.available_cores < requested_cores:
             return False
@@ -74,19 +75,9 @@ class Cluster:
                         break
             self.update_time()
             if self.current_time % 100 == 0:
-                print(self.current_time, self.occupied_cores)
+                print(self.current_time, self.occupied_cores, end="  ")
+                print(len([_ for _ in self.running_jobs.keys() if _.gwf_job.label == 'coadd']))
             job_sequence.extend(self.ts.get_ready())
         print("simulated wall time:", self.current_time/3600.)
         print("total cpu time:", self.total_cpu_time/3600.)
         print("time to run simulation:", time.time() - t0)
-
-
-if __name__ == '__main__':
-    from get_parsl_graph import graph
-
-    md_file = ("/sdf/data/rubin/user/jchiang/on-sky/task_metadata/DRP/"
-               "DRP_20250420_20250429_md.pickle")
-    resource_request = ResourceRequest(md_file)
-
-    cluster = Cluster(resource_request, dt=20, nodes=1)
-    cluster.submit(graph)
