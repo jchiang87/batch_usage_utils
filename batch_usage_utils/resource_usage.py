@@ -91,9 +91,9 @@ class ResourceUsage:
     def __call__(self, job, prereq_info=None):
         cpu_time_total = 0
         memory_max = 0
-        for task, count in job.gwf_job.quanta_counts.items():
+        for task, count in job.quanta_counts.items():
             if task in self._task_funcs:
-                dataId = job.gwf_job.tags
+                dataId = job.tags
             else:
                 dataId = None
             cpu_time, memory = self._task_instance_request(task, dataId)
