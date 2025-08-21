@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import glob
 import pickle
 import time
 import argparse
@@ -12,22 +13,26 @@ def add_datetime(df0, mjd_col, dt_col, offset=7.):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("md_file", type=str, help="pipeline metadata file")
+parser.add_argument("md_file_pattern", type=str,
+                    help="pipeline metadata file pattern")
 args = parser.parse_args()
 
-md_file = args.md_file
+pattern = args.md_file_pattern
+md_files = sorted(glob.glob(pattern))
 
-with open(md_file, "rb") as fobj:
-    step = pickle.load(fobj)
-    for task, df0 in step.items():
-        print(task, end=": ")
-        if len(df0) == 0:
-            continue
-        t0 = time.time()
-        df0 = add_datetime(df0, 'start_utc', 'start_dt')
-        df0 = add_datetime(df0, 'end_utc', 'end_dt')
-        print(time.time() - t0)
+for md_file in md_files:
+    print(md_file)
+    with open(md_file, "rb") as fobj:
+        step = pickle.load(fobj)
+        for task, df0 in step.items():
+            print(task, end=": ")
+            if len(df0) == 0:
+                continue
+            t0 = time.time()
+            df0 = add_datetime(df0, 'start_utc', 'start_dt')
+            df0 = add_datetime(df0, 'end_utc', 'end_dt')
+            print(time.time() - t0)
 
-outfile = md_file.replace("_md", "_md_dt")
-with open(outfile, "wb") as fobj:
-    pickle.dump(step, fobj)
+    outfile = md_file.replace("_md", "_md_dt")
+    with open(outfile, "wb") as fobj:
+        pickle.dump(step, fobj)

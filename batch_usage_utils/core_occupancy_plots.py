@@ -72,7 +72,7 @@ def plot_slurm_allocation(slurm_csv_file, color=None, label=None, alpha=1.0,
 def workflow_summary_plot(md_files, slurm_job_file=None,
                           htcondor_job_file=None, title=None,
                           memory_factors=None, time_col_suffix='dt',
-                          show_legend=True, utc_range=None):
+                          show_legend=True, utc_range=None, my_tasks=None):
     dfs = []
     tasks = []
     md_all = dict()
@@ -92,6 +92,8 @@ def workflow_summary_plot(md_files, slurm_job_file=None,
     if utc_range is not None:
         df0 = df0.query(f"{utc_range[0]} < start_utc < {utc_range[1]}")
         tasks = [_ for _ in tasks if _ in set(df0['task'])]
+    if my_tasks is not None:
+        tasks = my_tasks
     for i, task in enumerate(tasks):
         df = df0.query(f"task == '{task}'")
         plot_concurrent_jobs(df, label=task, memory_factors=memory_factors,

@@ -21,10 +21,14 @@ class PipelineMetadata(dict):
     def read_md_files(md_files):
         if isinstance(md_files, str):
             md_files = [md_files]
-        dfs = {}
+        dfs = defaultdict(list)
         for md_file in md_files:
             with open(md_file, "rb") as fobj:
-                dfs.update(pickle.load(fobj))
+                my_dfs = pickle.load(fobj)
+                for key in my_dfs:
+                    dfs[key].append(my_dfs[key])
+        for key in dfs:
+            dfs[key] = pd.concat(dfs[key])
         return PipelineMetadata(dfs)
 
     def write_md_file(self, md_file, clobber=False):

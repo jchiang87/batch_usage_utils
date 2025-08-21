@@ -97,7 +97,7 @@ class ResourceUsage:
             else:
                 dataId = None
             cpu_time, memory = self._task_instance_request(task, dataId)
-            cpu_time_total += cpu_time
+            cpu_time_total += count*cpu_time
             memory_max = max(memory, memory_max)
         return cpu_time_total, memory_max
 

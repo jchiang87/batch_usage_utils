@@ -1,6 +1,7 @@
 from collections import defaultdict
 import time
 import numpy as np
+import pandas as pd
 from graphlib import TopologicalSorter
 
 __all__ = ["ComputingCluster"]
@@ -8,13 +9,14 @@ __all__ = ["ComputingCluster"]
 
 class ComputingCluster:
     def __init__(self, resource_usage, nodes=10, cores_per_node=120,
-                 mem_per_core=4, dt=10):
+                 mem_per_core=4, dt=10, use_requestedMemory=True):
         self.ts = None
         self.resource_usage = resource_usage
         self.cores = nodes*cores_per_node
         self.available_cores = self.cores
         self.mem_per_core = mem_per_core
         self.dt = dt
+        self.use_requestedMemory = use_requestedMemory
         self.running_jobs = {}
         self.current_time = 0
         self.total_cpu_time = 0
@@ -25,6 +27,8 @@ class ComputingCluster:
         gwf_job = self.gwf.get_job(job)
         task = gwf_job.label
         cpu_time, memory = self.resource_usage(gwf_job)
+        if self.use_requestedMemory:
+            memory = gwf_job.request_memory/1024.0
         requested_cores = max(1, int(np.ceil(memory/self.mem_per_core)))
         if self.available_cores < requested_cores:
             return False
@@ -94,6 +98,9 @@ class ComputingCluster:
         # Repackage the metadata as data frames
         for key, data in self.md.items():
             self.md[key] = pd.DataFrame(data)
+        self.md = dict(self.md)  # make the metadata dict pickleable
         print("simulated wall time:", self.current_time/3600.)
         print("total cpu time:", self.total_cpu_time/3600.)
+        print("cpu time / (wall time * cores):",
+              self.total_cpu_time/(self.current_time*self.cores))
         print("time to run simulation:", time.time() - t0)
