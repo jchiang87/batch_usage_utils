@@ -1,12 +1,13 @@
+from types import MappingProxyType
 import numpy as np
-import pandas as pd
+from scipy.stats import binned_statistic
 from batch_usage_utils import PipelineMetadata
 
 
-__all__ = ["ResourceUsage", "fit_resource_func"]
+__all__ = ["ResourceUsage"]
 
 
-def make_query(dataId):
+def make_query(dataId):  # noqa:N803
     items = []
     for k, v in dataId.items():
         if isinstance(v, str):
@@ -16,106 +17,115 @@ def make_query(dataId):
     return " and ".join(items)
 
 
-class ResourceUsage:
-    def __init__(self, md_file, qg_info=None):
-        self.md = PipelineMetadata.read_md_files(md_file)
-        self.qg_info = qg_info
-        self._num_warps = None
-        self._task_funcs = {}
-        if qg_info is not None:
-            self._extract_qg_info()
-            self._add_task_funcs()
-        self._cpu_time_cache = {}
-        self._memory_cache = {}
+class UseWarpFunc(dict):
+    def __init__(self, cpu_time, memory):
+        super().__init__()
+        self['run_cpu_time'] = cpu_time
+        self['max_rss'] = memory
 
-    def _extract_qg_info(self):
-        self._num_warps = {tuple(_[:3]): _[3] for _ in
-                           zip(self.qg_info['band'],
-                               self.qg_info['tract'],
-                               self.qg_info['patch'],
-                               self.qg_info['num_warps'])}
+
+RESOURCE_DEFAULTS = MappingProxyType({"run_cpu_time": 60, "max_rss": 4.0})
+
+WARP_INDEX_COLS = ["tract", "patch", "band"]
+
+NUM_WARP_TASKS = {
+    'selectDeepCoaddVisits': UseWarpFunc(True, True),
+    'selectTemplateCoaddVisits': UseWarpFunc(True, True),
+    'assembleDeepCoadd': UseWarpFunc(True, True),
+    'assembleTemplateCoadd': UseWarpFunc(True, True),
+    'assembleCellCoadd': UseWarpFunc(True, True),
+    'detectCoaddPeaks': UseWarpFunc(False, True),
+    'deconvolve': UseWarpFunc(False, True),
+    'deblendCoaddFootprints': UseWarpFunc(True, True),
+    'measureObjectUnforced': UseWarpFunc(True, True),
+    'fitDeepCoaddPsfGaussians': UseWarpFunc(True, True),
+    'measureObjectForced': UseWarpFunc(True, True),
+    'associateDiaSource': UseWarpFunc(True, False),
+    'calculateDiaObject': UseWarpFunc(True, False),
+    'standardizeObjectForcedSource': UseWarpFunc(True, False),
+    'splitPrimaryObjectForcedSource': UseWarpFunc(True, False),
+    'standardizeDiaObjectForcedSource': UseWarpFunc(True, False),
+}
+
+
+class ResourceUsage:
+    def __init__(self, md_files, df_warps=None):
+        self.md = PipelineMetadata.read_md_files(md_files)
+        self.df_warps = df_warps
+        # Add specialized resource request functions.
+        if df_warps is not None:
+            self._add_task_funcs()
+        self._resource_cache = {}
+
+    def num_warps(self, tract, patch, band=None):
+        query = f"tract=={tract} and patch=={patch}"
+        if band is not None:
+            query += f" and band=='{band}'"
+        value = sum(self.df_warps.query(query)["num_warps"])
+        if value == 0:
+            raise RuntimeError(f"num_warps == 0 for {query}")
+        return value
 
     def _add_task_funcs(self):
-        task = "assembleDeepCoadd"
-        df0 = self.md[task]
-        cpu_time = fit_resource_func(df0, "run_cpu_time", xcol="num_warps")
-        memory = fit_resource_func(df0, "max_rss", xcol="num_warps")
-
-        def task_func(num_warps):
-            return cpu_time(num_warps), memory(num_warps)
-
-        self._task_funcs = {task: task_func}
-
-    def _cpu_time(self, task):
-        if task not in self._cpu_time_cache:
-            try:
-                df0 = self.md[task]
-            except KeyError:
-                mean_cpu_time = 60.
-            else:
-                if df0.empty:
-                    # Use a default value of 60 sec.
-                    mean_cpu_time = 60.
+        self._task_funcs = {}
+        for task, func_status in NUM_WARP_TASKS.items():
+            task_funcs = {}
+            for column in RESOURCE_DEFAULTS:
+                if func_status[column]:
+                    task_funcs[column] = self.fit_resource_func(task, column)
                 else:
-                    mean_cpu_time = np.mean(df0['run_cpu_time'])
-            self._cpu_time_cache[task] = mean_cpu_time
-        return float(self._cpu_time_cache[task])
+                    task_funcs[column] \
+                        = lambda x: self._resource_request(task)[column]
+            self._task_funcs[task] = task_funcs
 
-    def _memory(self, task):
-        if task not in self._memory_cache:
-            try:
-                df0 = self.md[task]
-            except KeyError:
-                mean_max_rss = 4.
-            else:
-                if df0.empty:
-                    mean_max_rss = 4.  # 4GB default
-                else:
-                    mean_max_rss = np.mean(df0['max_rss'])
-            self._memory_cache[task] = mean_max_rss
-        return float(self._memory_cache[task])
+    def _resource_request(self, task):
+        if task not in self._resource_cache:
+            resources = dict(RESOURCE_DEFAULTS)
+            if task in self.md and not (df0 := self.md[task]).empty:
+                for column in RESOURCE_DEFAULTS:
+                    resources[column] = float(np.mean(df0[column]))
+            self._resource_cache[task] = resources
+        return self._resource_cache[task]
 
-    def _task_instance_request(self, task, dataId):
+    def _task_instance_request(self, task, dataId):  # noqa:N803
         if task in self._task_funcs:
-            # Handle tasks like assembleDeepCoadd whose resource
-            # requirements depend on info from its prerequisites,
-            # e.g., # input warps.
-            #print(task, dataId)
-            key = dataId['band'], dataId['tract'], dataId['patch']
-            num_warps = self._num_warps[key]
-            return self._task_funcs[task](num_warps)
-        cpu_time = self._cpu_time(task)
-        memory = self._memory(task)
-        return cpu_time, memory
+            tract, patch = dataId['tract'], dataId['patch']
+            band = dataId.get('band', None)
+            num_warps = self.num_warps(tract, patch, band=band)
+            return [self._task_funcs[task][column](num_warps) for
+                    column in RESOURCE_DEFAULTS]
+        return tuple(self._resource_request(task).values())
 
     def __call__(self, job, prereq_info=None):
         cpu_time_total = 0
         memory_max = 0
         for task, count in job.quanta_counts.items():
             if task in self._task_funcs:
-                dataId = job.tags
+                dataId = job.tags  # noqa:N806
             else:
-                dataId = None
+                dataId = None  # noqa:N806
             cpu_time, memory = self._task_instance_request(task, dataId)
             cpu_time_total += count*cpu_time
             memory_max = max(memory, memory_max)
         return cpu_time_total, memory_max
 
-
-def fit_resource_func(df0, ycol, xcol='num_warps', nbins=50,
-                      percentile=95., deg=1):
-    df = pd.DataFrame(df0[[xcol, ycol]])
-    bins = np.linspace(0, max(df[xcol]), nbins)
-    df['bin'] = np.digitize(df[xcol], bins=bins)
-    bin_values = sorted(set(df['bin']))
-    bin_centers = (bins[1:] + bins[:-1])/2.
-    xx = []
-    yy = []
-    for bin_value, bin_center in zip(bin_values, bin_centers):
-        my_df = df.query(f"bin == {bin_value}")
-        if my_df.empty:
-            continue
-        xx.append(float(bin_center))
-        yy.append(float(np.percentile(my_df[ycol], percentile)))
-    result = np.polyfit(xx, yy, deg)
-    return np.poly1d(result)
+    def fit_resource_func(self, task, ycol, bins=20, percentile=95, deg=1):
+        xcol = "num_warps"
+        df0 = self.md[task]
+        if not all(_ in df0 for _ in WARP_INDEX_COLS[:2]):
+            raise RuntimeError(
+                "Trying to fit a task without tract, patch dimensions")
+        cols = WARP_INDEX_COLS
+        df_warps = self.df_warps
+        if WARP_INDEX_COLS[2] not in df0:  # 'band' dimension not used by task
+            cols = WARP_INDEX_COLS[:2]
+            df_warps = self.df_warps.groupby(cols)[xcol].sum().reset_index()
+        df = df0.set_index(cols).join(df_warps.set_index(cols, drop=False),
+                                      on=cols, rsuffix="_r")
+        df = df.query(f"{xcol} == {xcol} and {ycol} == {ycol}")
+        results = binned_statistic(
+            df[xcol].to_numpy(), df[ycol].to_numpy(),
+            statistic=lambda x: np.percentile(x, percentile), bins=bins)
+        centers = (results.bin_edges[1:] + results.bin_edges[:-1])/2.0
+        func = np.polynomial.Chebyshev.fit(centers, results.statistic, deg=deg)
+        return func
