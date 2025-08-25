@@ -52,20 +52,26 @@ class ResourceUsage:
     def __init__(self, md_files, df_warps=None):
         self.md = PipelineMetadata.read_md_files(md_files)
         self.df_warps = df_warps
+        if df_warps is not None:
+            self._set_num_warps()
         # Add specialized resource request functions.
         self._task_funcs = {}
         if df_warps is not None:
             self._add_task_funcs()
         self._resource_cache = {}
 
+    def _set_num_warps(self):
+        df = self.df_warps
+        self._num_warps = dict(zip(zip(df["tract"], df["patch"], df["band"]),
+                                    df["num_warps"]))
+        df1 = df.groupby(["tract", "patch"])["num_warps"].sum().reset_index()
+        self._num_warps1 = dict(zip(zip(df1["tract"], df1["patch"]),
+                                    df1["num_warps"]))
+
     def num_warps(self, tract, patch, band=None):
-        query = f"tract=={tract} and patch=={patch}"
-        if band is not None:
-            query += f" and band=='{band}'"
-        value = sum(self.df_warps.query(query)["num_warps"])
-        if value == 0:
-            raise RuntimeError(f"num_warps == 0 for {query}")
-        return value
+        if band is None:
+            return self._num_warps1[(tract, patch)]
+        return self._num_warps[(tract, patch, band)]
 
     def _add_task_funcs(self):
         for task, func_status in NUM_WARP_TASKS.items():
