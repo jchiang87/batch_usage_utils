@@ -1,12 +1,15 @@
 import os
+from collections import defaultdict
 import time
 import pickle
+import yaml
 
 
 __all__ = ["Workflow", "Job"]
 
 
 class Job:
+    _memory_requests = defaultdict(lambda : 4096.)
     def __init__(self, node):
         self.task_label = node.task_node.label
         self.id = node.nodeId
@@ -14,7 +17,6 @@ class Job:
         self.inputs = set()
         self.predecessors = set()
         self.quanta_counts = {self.task_label: 1}
-        self.request_memory = None
 
     def add_input(self, datasets):
         for ds in datasets:
@@ -27,6 +29,11 @@ class Job:
     @property
     def tags(self):
         return self.dataId
+
+    @property
+    def request_memory(self):
+        # Requested memory from bps config in MB.
+        return self._memory_requests[self.task_label]
 
     def __str__(self):
         return ":".join((self.task_label, str(self.dataId)))
@@ -56,6 +63,12 @@ class Workflow(dict):
                     job.predecessors.add(dataset_map[ds_id])
         print("time to parse QG:", time.time() - t0)
         print(len(self))
+
+    def set_memory_requests(self, config_file):
+        with open(config_file) as fobj:
+            data = yaml.safe_load(fobj)
+        for task, info in data['pipetask'].items():
+            Job._memory_requests[task] = info['requestMemory']
 
     def get_job(self, job_name):
         return self[job_name]
