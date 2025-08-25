@@ -21,7 +21,7 @@ class ComputingCluster:
         self.current_time = 0
         self.total_cpu_time = 0
         self.gwf = None
-        self.md = defaultdict(lambda : defaultdict(list))
+        self._md = defaultdict(lambda : defaultdict(list))
 
     def add_job(self, job):
         gwf_job = self.gwf.get_job(job)
@@ -36,10 +36,10 @@ class ComputingCluster:
                                   self.current_time + cpu_time,
                                   cpu_time)
         for k, v in gwf_job.tags.items():
-            self.md[task][k].append(v)
-        self.md[task]['start_time'].append(self.current_time)
-        self.md[task]['cpu_time'].append(cpu_time)
-        self.md[task]['memory'].append(memory)
+            self._md[task][k].append(v)
+        self._md[task]['start_time'].append(self.current_time)
+        self._md[task]['cpu_time'].append(cpu_time)
+        self._md[task]['memory'].append(memory)
         self.available_cores -= requested_cores
         return True
 
@@ -68,7 +68,18 @@ class ComputingCluster:
             self.ts.done(job)
         self.available_cores = self.cores - occupied_cores
 
-    def submit(self, gwf):
+    @property
+    def md(self):
+        # Repackage the accumulated task metadata as a dict of data frames.
+        return {key: pd.DataFrame(data) for key, data in self._md.items()}
+
+    def save_md(self, outfile, clobber=False):
+        if not clobber and os.path.isfile(outfile):
+            raise FileExistsError(f"{outfile} exists already")
+        with open(outfile, "wb") as fobj:
+            pickle.dump(self.md, fobj)
+
+    def submit(self, gwf, time_limit=None):
         self.gwf = gwf
         self.ts = TopologicalSorter()
         for job_name in gwf:
@@ -95,10 +106,8 @@ class ComputingCluster:
                 print(len([_ for _ in self.running_jobs.keys()
                            if gwf.get_job(_).label == 'coadd']))
             job_sequence.extend(self.ts.get_ready())
-        # Repackage the metadata as data frames
-        for key, data in self.md.items():
-            self.md[key] = pd.DataFrame(data)
-        self.md = dict(self.md)  # make the metadata dict pickleable
+            if time_limit is not None and self.current_time > time_limit:
+                break
         print("simulated wall time:", self.current_time/3600.)
         print("total cpu time:", self.total_cpu_time/3600.)
         print("cpu time / (wall time * cores):",
