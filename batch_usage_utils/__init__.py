@@ -9,3 +9,4 @@ from .core_occupancy_plots import *
 from .extract_md_files import *
 from .resource_usage import *
 from .computing_cluster import *
+from .workflow import *

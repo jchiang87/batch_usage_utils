@@ -53,6 +53,7 @@ class ResourceUsage:
         self.md = PipelineMetadata.read_md_files(md_files)
         self.df_warps = df_warps
         # Add specialized resource request functions.
+        self._task_funcs = {}
         if df_warps is not None:
             self._add_task_funcs()
         self._resource_cache = {}
@@ -67,7 +68,6 @@ class ResourceUsage:
         return value
 
     def _add_task_funcs(self):
-        self._task_funcs = {}
         for task, func_status in NUM_WARP_TASKS.items():
             task_funcs = {}
             for column in RESOURCE_DEFAULTS:
