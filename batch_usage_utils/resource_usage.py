@@ -25,6 +25,7 @@ class UseWarpFunc(dict):
 
 
 RESOURCE_DEFAULTS = MappingProxyType({"run_cpu_time": 60, "max_rss": 4.0})
+RESOURCE_FIT_PERCENTILES = MappingProxyType({"run_cpu_time": 50, "max_rss": 95})
 
 WARP_INDEX_COLS = ["tract", "patch", "band"]
 
@@ -63,7 +64,7 @@ class ResourceUsage:
     def _set_num_warps(self):
         df = self.df_warps
         self._num_warps = dict(zip(zip(df["tract"], df["patch"], df["band"]),
-                                    df["num_warps"]))
+                                   df["num_warps"]))
         df1 = df.groupby(["tract", "patch"])["num_warps"].sum().reset_index()
         self._num_warps1 = dict(zip(zip(df1["tract"], df1["patch"]),
                                     df1["num_warps"]))
@@ -78,7 +79,10 @@ class ResourceUsage:
             task_funcs = {}
             for column in RESOURCE_DEFAULTS:
                 if func_status[column]:
-                    task_funcs[column] = self.fit_resource_func(task, column)
+                    percentile = RESOURCE_FIT_PERCENTILES[column]
+                    task_funcs[column] \
+                        = self.fit_resource_func(task, column,
+                                                 percentile=percentile)
                 else:
                     task_funcs[column] \
                         = lambda x: self._resource_request(task)[column]
