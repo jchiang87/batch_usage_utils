@@ -90,7 +90,7 @@ class ComputingCluster:
 
         job_sequence = list(self.ts.get_ready())
         while self.ts.is_active() or self.running_jobs:
-            if ncores := self.available_cores > 0 and job_sequence:
+            if (ncores := self.available_cores) > 0 and job_sequence:
                 indexes = list(range(len(job_sequence)))
                 indexes.reverse()
                 added_jobs = 0

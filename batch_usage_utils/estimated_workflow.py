@@ -66,14 +66,13 @@ class EstimatedWorkflow(Workflow):
         job.id = job_id
         job.task_label = job_id[0]
         job.dataId = dict(job_id[1])
+        job.quanta_counts = {job.task_label: 1}
         self[job_id] = job
 
     @staticmethod
-    def build_from_overlaps(overlaps_file, pipeline_yaml, repo="/repo/main"):
+    def build_from_overlaps(overlaps, pipeline_yaml, repo="/repo/main"):
         pipeline_info = PipelineInfo(pipeline_yaml, repo=repo)
 
-        # Extract jobs based on visit/skymap overlaps.
-        overlaps = pd.read_parquet(overlaps_file)
         # Add skymap name and instrument columns in case they aren't present.
         overlaps['skymap'] = 'lsst_cells_v1'
         overlaps['instrument'] = 'LSSTCam'
@@ -94,7 +93,7 @@ class EstimatedWorkflow(Workflow):
                     upstream_id = (upstream_task.name,
                                    tuple([(dim, row[dim]) for dim
                                           in upstream_dims]))
-                    wf[job_id].predecessors.add(wf[upstream_id])
+                    wf[job_id].predecessors.add(wf[upstream_id].id)
         return wf
 
 
