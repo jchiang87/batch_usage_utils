@@ -13,6 +13,7 @@ class Job:
     def __init__(self, node=None):
         self.inputs = set()
         self.predecessors = set()
+        self.resource_usage = None
         if node is not None:
             self.task_label = node.task_node.label
             self.id = node.nodeId

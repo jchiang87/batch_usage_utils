@@ -25,8 +25,11 @@ class ComputingCluster:
 
     def add_job(self, job):
         gwf_job = self.gwf.get_job(job)
+        if (not hasattr(gwf_job, "resource_usage") or
+            gwf_job.resource_usage is None):
+            gwf_job.resource_usage = self.resource_usage(gwf_job)
         task = gwf_job.label
-        cpu_time, memory = self.resource_usage(gwf_job)
+        cpu_time, memory = gwf_job.resource_usage
         if self.use_requestedMemory:
             memory = gwf_job.request_memory/1024.0
         requested_cores = max(1, int(np.ceil(memory/self.mem_per_core)))
