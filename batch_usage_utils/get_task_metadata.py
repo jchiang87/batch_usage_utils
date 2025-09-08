@@ -149,8 +149,10 @@ def add_node_info(df0, node_info):
     return df0
 
 
-def get_task_names(submit_dir_root):
-    log_files = sorted(glob.glob(f"{submit_dir_root}/*/quantumGraph*.out"))
+def get_task_names(submit_dir_root, pattern=None):
+    if pattern is None:
+        pattern = f"{submit_dir_root}/*/quantumGraph*.out"
+    log_files = sorted(glob.glob(pattern))
     tasks = {}
     for log_file in log_files:
         with open(log_file) as fobj:
