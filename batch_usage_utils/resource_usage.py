@@ -50,14 +50,15 @@ NUM_WARP_TASKS = {
 
 
 class ResourceUsage:
-    def __init__(self, md_files, df_warps=None):
+    def __init__(self, md_files, md_warps=None, df_warps=None):
         self.md = PipelineMetadata.read_md_files(md_files)
+        self.md_warps = md_warps
         self.df_warps = df_warps
         if df_warps is not None:
             self._set_num_warps()
         # Add specialized resource request functions.
         self._task_funcs = {}
-        if df_warps is not None:
+        if md_warps is not None:
             self._add_task_funcs()
         self._resource_cache = {}
 
@@ -126,11 +127,11 @@ class ResourceUsage:
             raise RuntimeError(
                 "Trying to fit a task without tract, patch dimensions")
         cols = WARP_INDEX_COLS
-        df_warps = self.df_warps
+        warps = self.md_warps
         if WARP_INDEX_COLS[2] not in df0:  # 'band' dimension not used by task
             cols = WARP_INDEX_COLS[:2]
-            df_warps = self.df_warps.groupby(cols)[xcol].sum().reset_index()
-        df = df0.set_index(cols).join(df_warps.set_index(cols, drop=False),
+            warps = self.md_warps.groupby(cols)[xcol].sum().reset_index()
+        df = df0.set_index(cols).join(warps.set_index(cols, drop=False),
                                       on=cols, rsuffix="_r")
         df = df.query(f"{xcol} == {xcol} and {ycol} == {ycol}")
         results = binned_statistic(
