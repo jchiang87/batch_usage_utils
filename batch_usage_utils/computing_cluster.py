@@ -1,5 +1,7 @@
+import os
 from collections import defaultdict
 import time
+import pickle
 import numpy as np
 import pandas as pd
 from graphlib import TopologicalSorter
@@ -21,7 +23,7 @@ class ComputingCluster:
         self.current_time = 0
         self.total_cpu_time = 0
         self.gwf = None
-        self._md = defaultdict(lambda : defaultdict(list))
+        self._md = defaultdict(lambda: defaultdict(list))
 
     def add_job(self, job):
         gwf_job = self.gwf.get_job(job)
@@ -82,7 +84,7 @@ class ComputingCluster:
         with open(outfile, "wb") as fobj:
             pickle.dump(self.md, fobj)
 
-    def submit(self, gwf, time_limit=None):
+    def submit(self, gwf, time_limit=None, outfile=None):
         self.gwf = gwf
         self.ts = TopologicalSorter()
         for job_name in gwf:
@@ -107,7 +109,9 @@ class ComputingCluster:
             if self.current_time % 100 == 0:
                 print(self.current_time, self.occupied_cores, end="  ")
                 print(len([_ for _ in self.running_jobs.keys()
-                           if gwf.get_job(_).label == 'coadd']))
+                           if gwf.get_job(_).label == 'coadd']), flush=True)
+                if outfile is not None:
+                    self.save_md(outfile, clobber=True)
             job_sequence.extend(self.ts.get_ready())
             if time_limit is not None and self.current_time > time_limit:
                 break
