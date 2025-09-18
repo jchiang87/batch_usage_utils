@@ -10,7 +10,8 @@ __all__ = ["Workflow", "Job", "set_job_resource_usage"]
 
 
 class Job:
-    _memory_requests = defaultdict(lambda : 4.0)
+    _memory_requests = defaultdict(lambda: 4.0)
+
     def __init__(self, node=None):
         self.inputs = set()
         self.predecessors = set()
@@ -113,7 +114,7 @@ class Workflow(dict):
 def set_job_resource_usage(workflow, resource_usage, visit_counts):
     for _, job in tqdm(workflow.items()):
         task = job.label
-        dataId = job.dataId
+        dataId = job.dataId  # noqa: N806
         if "patch" not in dataId or "tract" not in dataId:
             num_visits = 1
         else:
