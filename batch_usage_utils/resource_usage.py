@@ -15,7 +15,7 @@ class UseVisitFunc(dict):
 
 
 RESOURCE_DEFAULTS = MappingProxyType({"run_cpu_time": 60, "max_rss": 4.0})
-RESOURCE_FIT_PERCENTILES = MappingProxyType({"run_cpu_time": 50, "max_rss": 95})
+RESOURCE_FIT_PERCENTILES = MappingProxyType({"run_cpu_time": 95, "max_rss": 95})
 
 NUM_VISITS_TASKS = {
     'selectDeepCoaddVisits': UseVisitFunc(True, True),
