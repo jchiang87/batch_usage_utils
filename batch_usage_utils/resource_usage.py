@@ -1,4 +1,5 @@
 from types import MappingProxyType
+import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import binned_statistic
 from batch_usage_utils import PipelineMetadata
@@ -75,7 +76,8 @@ class ResourceUsage:
             self._resource_cache[task] = resources
         return self._resource_cache[task]
 
-    def fit_resource_func(self, task, ycol, bins=20, percentile=95, deg=1):
+    def fit_resource_func(self, task, ycol, bins=20, percentile=95, deg=1,
+                          make_plot=False):
         visit_index_cols = ["patch", "tract", "band"]
         xcol = "num_visits"
         df0 = self.md[task]
@@ -97,4 +99,13 @@ class ResourceUsage:
         centers = (results.bin_edges[1:] + results.bin_edges[:-1])/2.0
         func = np.poly1d(np.polyfit(centers, results.statistic, deg))
         ymin = min(df[ycol])
+        if make_plot:
+            plt.figure()
+            plt.scatter(df[xcol], df[ycol], s=2)
+            xmin, xmax, _, _ = plt.axis()
+            xx = np.linspace(xmin, xmax, 100)
+            yy = func(xx)
+            plt.plot(xx, yy, linestyle=":", color='green')
+            plt.axvline(0, color='red', linestyle='--')
+            plt.axhline(0, color='red', linestyle='--')
         return lambda num_visits: float(max(func(num_visits), ymin))
