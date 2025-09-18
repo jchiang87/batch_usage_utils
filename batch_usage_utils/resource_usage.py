@@ -38,30 +38,12 @@ NUM_VISITS_TASKS = {
 
 
 class ResourceUsage:
-    def __init__(self, md_files, md_warps=None, df_warps=None):
+    def __init__(self, md_files, num_visits_md):
         self.md = PipelineMetadata.read_md_files(md_files)
-        self.md_warps = md_warps
-        self.df_warps = df_warps
-        if df_warps is not None:
-            self._set_num_warps()
+        self.num_visits_md = num_visits_md
         # Add specialized resource request functions.
-        self._task_funcs = {}
-        if md_warps is not None:
-            self._add_task_funcs()
+        self._add_task_funcs()
         self._resource_cache = {}
-
-    def _set_num_warps(self):
-        df = self.df_warps
-        self._num_warps = dict(zip(zip(df["tract"], df["patch"], df["band"]),
-                                   df["num_warps"]))
-        df1 = df.groupby(["tract", "patch"])["num_warps"].sum().reset_index()
-        self._num_warps1 = dict(zip(zip(df1["tract"], df1["patch"]),
-                                    df1["num_warps"]))
-
-    def num_warps(self, tract, patch, band=None):
-        if band is None:
-            return self._num_warps1[(tract, patch)]
-        return self._num_warps[(tract, patch, band)]
 
     def _add_task_funcs(self):
         self._task_funcs = {}
@@ -75,10 +57,16 @@ class ResourceUsage:
                                                  percentile=percentile)
                 else:
                     task_funcs[column] \
-                        = lambda x: self._resource_request(task)[column]
+                        = lambda x: self._fixed_resource_request(task)[column]
             self._task_funcs[task] = task_funcs
 
-    def _resource_request(self, task):
+    def __call__(self, task, num_visits):  # noqa:N803
+        if task in self._task_funcs:
+            return [self._task_funcs[task][column](num_visits) for
+                    column in RESOURCE_DEFAULTS]
+        return tuple(self._fixed_resource_request(task).values())
+
+    def _fixed_resource_request(self, task):
         if task not in self._resource_cache:
             resources = dict(RESOURCE_DEFAULTS)
             if task in self.md and not (df0 := self.md[task]).empty:
