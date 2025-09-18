@@ -87,45 +87,26 @@ class ResourceUsage:
             self._resource_cache[task] = resources
         return self._resource_cache[task]
 
-    def _task_instance_request(self, task, dataId):  # noqa:N803
-        if task in self._task_funcs:
-            tract, patch = dataId['tract'], dataId['patch']
-            band = dataId.get('band', None)
-            num_warps = self.num_warps(tract, patch, band=band)
-            return [self._task_funcs[task][column](num_warps) for
-                    column in RESOURCE_DEFAULTS]
-        return tuple(self._resource_request(task).values())
-
-    def __call__(self, job, prereq_info=None):
-        cpu_time_total = 0
-        memory_max = 0
-        for task, count in job.quanta_counts.items():
-            if task in self._task_funcs:
-                dataId = job.tags  # noqa:N806
-            else:
-                dataId = None  # noqa:N806
-            cpu_time, memory = self._task_instance_request(task, dataId)
-            cpu_time_total += count*cpu_time
-            memory_max = max(memory, memory_max)
-        return cpu_time_total, memory_max
-
     def fit_resource_func(self, task, ycol, bins=20, percentile=95, deg=1):
-        xcol = "num_warps"
+        visit_index_cols = ["patch", "tract", "band"]
+        xcol = "num_visits"
         df0 = self.md[task]
-        if not all(_ in df0 for _ in WARP_INDEX_COLS[:2]):
+        if not all(_ in df0 for _ in visit_index_cols[:2]):
             raise RuntimeError(
-                "Trying to fit a task without tract, patch dimensions")
-        cols = WARP_INDEX_COLS
-        warps = self.md_warps
-        if WARP_INDEX_COLS[2] not in df0:  # 'band' dimension not used by task
-            cols = WARP_INDEX_COLS[:2]
-            warps = self.md_warps.groupby(cols)[xcol].sum().reset_index()
-        df = df0.set_index(cols).join(warps.set_index(cols, drop=False),
+                "Trying to fit a task without patch, tract dimensions")
+        cols = visit_index_cols
+        visits = self.num_visits_md
+        if "band" not in df0:
+            cols = visit_index_cols[:2]
+            visits = self.num_visits_md.groupby(cols)[xcol].sum().reset_index()
+        df = df0.set_index(cols).join(visits.set_index(cols, drop=False),
                                       on=cols, rsuffix="_r")
+        # Exclude rows with nans:
         df = df.query(f"{xcol} == {xcol} and {ycol} == {ycol}")
         results = binned_statistic(
             df[xcol].to_numpy(), df[ycol].to_numpy(),
             statistic=lambda x: np.percentile(x, percentile), bins=bins)
         centers = (results.bin_edges[1:] + results.bin_edges[:-1])/2.0
-        func = np.polynomial.Chebyshev.fit(centers, results.statistic, deg=deg)
-        return func
+        func = np.poly1d(np.polyfit(centers, results.statistic, deg))
+        ymin = min(df[ycol])
+        return lambda num_visits: float(max(func(num_visits), ymin))
