@@ -3,16 +3,19 @@ from collections import defaultdict
 import time
 import pickle
 import yaml
+from tqdm import tqdm
 
 
-__all__ = ["Workflow", "Job"]
+__all__ = ["Workflow", "Job", "set_job_resource_usage"]
 
 
 class Job:
-    _memory_requests = defaultdict(lambda : 4096.)
+    _memory_requests = defaultdict(lambda : 4.0)
     def __init__(self, node=None):
         self.inputs = set()
         self.predecessors = set()
+        self._cpu_time = 90.
+        self._memory = None  # if None, then use cls._memory_requests value
         self.resource_usage = None
         if node is not None:
             self.task_label = node.task_node.label
@@ -33,15 +36,28 @@ class Job:
         return self.dataId
 
     @property
-    def request_memory(self):
-        # Requested memory from bps config in MB.
-        return self._memory_requests[self.task_label]
+    def cpu_time(self):
+        """
+        Job CPU time in seconds.
+        """
+        return self._cpu_time
+
+    @property
+    def memory(self):
+        """
+        Job memory in GB.
+        """
+        if self._memory is None:
+            # Use the requested memory from bps config.
+            self._memory = self._memory_requests[self.task_label]
+
+        return self._memory
 
     def __str__(self):
-        return ":".join((self.task_label, str(self.dataId)))
+        return ": ".join((self.task_label, str(self.dataId)))
 
     def __repr__(self):
-        return ":".join((self.task_label, str(self.dataId)))
+        return ": ".join((self.task_label, str(self.dataId)))
 
 
 class Workflow(dict):
@@ -92,6 +108,20 @@ class Workflow(dict):
     def load_pickle_file(pickle_file):
         with open(pickle_file, "rb") as fobj:
             return pickle.load(fobj)
+
+
+def set_job_resource_usage(workflow, resource_usage, visit_counts):
+    for _, job in tqdm(workflow.items()):
+        task = job.label
+        dataId = job.dataId
+        if "patch" not in dataId or "tract" not in dataId:
+            num_visits = 1
+        else:
+            key = tuple(dataId[_] for _ in ["patch", "tract", "band"]
+                        if _ in dataId)
+            num_visits = visit_counts(*key) if len(key) >= 2 else 1
+        job._cpu_time, job._memory = resource_usage(task, num_visits)
+    return workflow
 
 
 if __name__ == '__main__':
