@@ -94,7 +94,7 @@ class Workflow(dict):
             Job._memory_requests[task] = info['requestMemory']
 
     def get_job(self, job_name):
-        return self[job_name]
+        return dict.__getitem__(self, job_name)
 
     def predecessors(self, job_name):
         return self[job_name].predecessors
