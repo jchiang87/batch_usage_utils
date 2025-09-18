@@ -7,16 +7,6 @@ from batch_usage_utils import PipelineMetadata
 __all__ = ["ResourceUsage"]
 
 
-def make_query(dataId):  # noqa:N803
-    items = []
-    for k, v in dataId.items():
-        if isinstance(v, str):
-            items.append(f"{k} == '{v}'")
-        else:
-            items.append(f"{k} == {v}")
-    return " and ".join(items)
-
-
 class UseWarpFunc(dict):
     def __init__(self, cpu_time, memory):
         super().__init__()
