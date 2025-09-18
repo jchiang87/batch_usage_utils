@@ -7,7 +7,7 @@ from batch_usage_utils import PipelineMetadata
 __all__ = ["ResourceUsage"]
 
 
-class UseWarpFunc(dict):
+class UseVisitFunc(dict):
     def __init__(self, cpu_time, memory):
         super().__init__()
         self['run_cpu_time'] = cpu_time
@@ -17,25 +17,23 @@ class UseWarpFunc(dict):
 RESOURCE_DEFAULTS = MappingProxyType({"run_cpu_time": 60, "max_rss": 4.0})
 RESOURCE_FIT_PERCENTILES = MappingProxyType({"run_cpu_time": 50, "max_rss": 95})
 
-WARP_INDEX_COLS = ["tract", "patch", "band"]
-
-NUM_WARP_TASKS = {
-    'selectDeepCoaddVisits': UseWarpFunc(True, True),
-    'selectTemplateCoaddVisits': UseWarpFunc(True, True),
-    'assembleDeepCoadd': UseWarpFunc(True, True),
-    'assembleTemplateCoadd': UseWarpFunc(True, True),
-    'assembleCellCoadd': UseWarpFunc(True, True),
-    'detectCoaddPeaks': UseWarpFunc(False, True),
-    'deconvolve': UseWarpFunc(False, True),
-    'deblendCoaddFootprints': UseWarpFunc(True, True),
-    'measureObjectUnforced': UseWarpFunc(True, True),
-    'fitDeepCoaddPsfGaussians': UseWarpFunc(True, True),
-    'measureObjectForced': UseWarpFunc(True, True),
-    'associateDiaSource': UseWarpFunc(True, False),
-    'calculateDiaObject': UseWarpFunc(True, False),
-    'standardizeObjectForcedSource': UseWarpFunc(True, False),
-    'splitPrimaryObjectForcedSource': UseWarpFunc(True, False),
-    'standardizeDiaObjectForcedSource': UseWarpFunc(True, False),
+NUM_VISITS_TASKS = {
+    'selectDeepCoaddVisits': UseVisitFunc(True, True),
+    'selectTemplateCoaddVisits': UseVisitFunc(True, True),
+    'assembleDeepCoadd': UseVisitFunc(True, True),
+    'assembleTemplateCoadd': UseVisitFunc(True, True),
+    'assembleCellCoadd': UseVisitFunc(True, True),
+    'detectCoaddPeaks': UseVisitFunc(False, True),
+    'deconvolve': UseVisitFunc(False, True),
+    'deblendCoaddFootprints': UseVisitFunc(True, True),
+    'measureObjectUnforced': UseVisitFunc(True, True),
+    'fitDeepCoaddPsfGaussians': UseVisitFunc(True, True),
+    'measureObjectForced': UseVisitFunc(True, True),
+    'associateDiaSource': UseVisitFunc(True, False),
+    'calculateDiaObject': UseVisitFunc(True, False),
+    'standardizeObjectForcedSource': UseVisitFunc(True, False),
+    'splitPrimaryObjectForcedSource': UseVisitFunc(True, False),
+    'standardizeDiaObjectForcedSource': UseVisitFunc(True, False),
 }
 
 
@@ -66,7 +64,8 @@ class ResourceUsage:
         return self._num_warps[(tract, patch, band)]
 
     def _add_task_funcs(self):
-        for task, func_status in NUM_WARP_TASKS.items():
+        self._task_funcs = {}
+        for task, func_status in NUM_VISITS_TASKS.items():
             task_funcs = {}
             for column in RESOURCE_DEFAULTS:
                 if func_status[column]:
