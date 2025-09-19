@@ -1,5 +1,4 @@
 import os
-from collections import defaultdict
 import time
 import pickle
 import yaml
@@ -10,8 +9,6 @@ __all__ = ["Workflow", "Job", "set_job_resource_usage"]
 
 
 class Job:
-    _memory_requests = defaultdict(lambda: 4.0)
-
     def __init__(self, node=None):
         self.inputs = set()
         self.predecessors = set()
@@ -48,10 +45,6 @@ class Job:
         """
         Job memory in GB.
         """
-        if self._memory is None:
-            # Use the requested memory from bps config.
-            self._memory = self._memory_requests[self.task_label]
-
         return self._memory
 
     def __str__(self):
@@ -87,11 +80,20 @@ class Workflow(dict):
         print(len(wf))
         return wf
 
-    def set_memory_requests(self, config_file):
+    def set_memory_requests(self, config_file, default=4.):
+        """
+        Read in the bps config file with the per-task memory requests and
+        use those values to set the memory per job.  If there is no
+        entry for a particular task, use the default, nominally 4 GB.
+        """
         with open(config_file) as fobj:
             data = yaml.safe_load(fobj)
+        task_memory_requests = {}
         for task, info in data['pipetask'].items():
-            Job._memory_requests[task] = info['requestMemory']
+            # Convert from MG to GB.
+            task_memory_requests[task] = info['requestMemory']/1000.
+        for job in tqdm(self.values()):
+            job._memory = task_memory_requests.get(job.task_label, default)
 
     def get_job(self, job_name):
         return dict.__getitem__(self, job_name)

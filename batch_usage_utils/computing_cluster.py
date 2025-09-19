@@ -11,7 +11,6 @@ __all__ = ["ComputingCluster"]
 
 class ComputingCluster:
     def __init__(self, nodes=10, cores_per_node=120, mem_per_core=4, dt=10):
-        # TODO: add back use_requestedMemory option
         self.ts = None
         self.cores = nodes*cores_per_node
         self.available_cores = self.cores
