@@ -1,8 +1,6 @@
 import os
 from graphlib import TopologicalSorter
 from tqdm import tqdm
-import numpy as np
-import pandas as pd
 import lsst.daf.butler as daf_butler
 from lsst.pipe.base import Pipeline
 from .workflow import Job, Workflow

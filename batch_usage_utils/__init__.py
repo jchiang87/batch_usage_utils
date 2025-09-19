@@ -11,3 +11,4 @@ from .resource_usage import *
 from .computing_cluster import *
 from .workflow import *
 from .estimated_workflow import *
+from .visit_counts import *
