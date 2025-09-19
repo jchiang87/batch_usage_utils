@@ -49,10 +49,6 @@ class ComputingCluster:
         if sum(_[0] for _ in self.running_jobs.values()) > self.cores:
             raise RuntimeError("too many running jobs")
 
-    @property
-    def occupied_cores(self):
-        return sum(_[0] for _ in self.running_jobs.values())
-
     def _compute_available_cores(self):
         occupied_cores = 0
         finished_jobs = []
