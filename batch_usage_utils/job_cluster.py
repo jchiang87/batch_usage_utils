@@ -7,11 +7,7 @@ __all__ = ["JobCluster", "make_job_clusters"]
 
 class JobCluster:
     def __init__(self, wf, job_ids):
-        # Check that all of these jobs are for the same task.
-        assert len(set(_[0] for _ in job_ids)) == 1
-
         self.jobs = [wf.get(_) for _ in job_ids]
-        self.label = self.jobs[0].label
         self.id = uuid.uuid4()
         self.cpu_time = sum(_.cpu_time for _ in self.jobs)
         self.memory = max(_.memory for _ in self.jobs)
@@ -22,11 +18,12 @@ class JobCluster:
         for cpu_time in cpu_times[:-1]:
             start_times.append(start_times[-1] + cpu_time)
         for start_time, cpu_time, job in zip(start_times, cpu_times, self.jobs):
+            task = job.label
             for k, v in job.tags.items():
-                md[k].append(v)
-            md['start_time'].append(start_time)
-            md['cpu_time'].append(cpu_time)
-            md['memory'].append(self.memory)
+                md[task][k].append(v)
+            md[task]['start_time'].append(start_time)
+            md[task]['cpu_time'].append(cpu_time)
+            md[task]['memory'].append(self.memory)
 
     def notify_ts(self, ts):
         """

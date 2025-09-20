@@ -54,11 +54,12 @@ class Job:
         return ": ".join((self.task_label, str(self.dataId)))
 
     def add_metadata(self, md, start_time):
+        task = self.label
         for k, v in self.tags.items():
-            md[k].append(v)
-        md['start_time'].append(start_time)
-        md['cpu_time'].append(self.cpu_time)
-        md['memory'].append(self.memory)
+            md[task][k].append(v)
+        md[task]['start_time'].append(start_time)
+        md[task]['cpu_time'].append(self.cpu_time)
+        md[task]['memory'].append(self.memory)
 
     def notify_ts(self, ts):
         ts.done(self.id)

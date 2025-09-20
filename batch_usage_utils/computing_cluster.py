@@ -30,7 +30,6 @@ class ComputingCluster:
         else:
             job_name = job_names[0]
             job = self.workflow.get_job(job_name)
-        task = job.label
         cpu_time, memory = job.cpu_time, job.memory
         # add random amount of sampling time to the start_time to smooth
         # out the scheduling
@@ -42,7 +41,7 @@ class ComputingCluster:
                                        start_time + cpu_time,
                                        cpu_time,
                                        job)
-        job.add_metadata(self._md[task], start_time)
+        job.add_metadata(self._md, start_time)
         self.available_cores -= requested_cores
         return True
 
