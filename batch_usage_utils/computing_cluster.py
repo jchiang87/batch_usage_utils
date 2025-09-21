@@ -103,7 +103,12 @@ class ComputingCluster:
                 if self.available_cores <= min_cores:
                     break
             if self.current_time % 100 == 0:
-                print(self.current_time, len(job_sequence), flush=True)
+                print(self.current_time, len(job_sequence),
+                      len(self.running_jobs), end=" ")
+                if job_sequence:
+                    print(job_sequence[-1][0][0], flush=True)
+                else:
+                    print(flush=True)
             if outfile is not None and self.current_time % 10000 == 0:
                 print("  saving simulation metadata", flush=True)
                 self.save_md(outfile, clobber=True)
