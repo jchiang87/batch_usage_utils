@@ -6,7 +6,7 @@ from lsst.pipe.base import Pipeline
 from .workflow import Job, Workflow
 
 
-__all__ = ["EstimatedWorkflow"]
+__all__ = ["PipelineInfo", "EstimatedWorkflow"]
 
 
 class PipelineInfo:
