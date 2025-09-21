@@ -24,12 +24,8 @@ class ComputingCluster:
         self._md = defaultdict(lambda: defaultdict(list))
 
     def add_jobs(self, job_names):
-        if len(job_names) > 1:
-            job = JobCluster(self.workflow, job_names)
-            job_name = job.id
-        else:
-            job_name = job_names[0]
-            job = self.workflow.get_job(job_name)
+        job = JobCluster(self.workflow, job_names)
+        job_name = job.id
         cpu_time, memory = job.cpu_time, job.memory
         # add random amount of sampling time to the start_time to smooth
         # out the scheduling

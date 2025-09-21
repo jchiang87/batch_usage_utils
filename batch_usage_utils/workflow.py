@@ -53,17 +53,6 @@ class Job:
     def __repr__(self):
         return ": ".join((self.task_label, str(self.dataId)))
 
-    def add_metadata(self, md, start_time):
-        task = self.label
-        for k, v in self.tags.items():
-            md[task][k].append(v)
-        md[task]['start_time'].append(start_time)
-        md[task]['cpu_time'].append(self.cpu_time)
-        md[task]['memory'].append(self.memory)
-
-    def notify_ts(self, ts):
-        ts.done(self.id)
-
 
 class Workflow(dict):
     def __init__(self):
