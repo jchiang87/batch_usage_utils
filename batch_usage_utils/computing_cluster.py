@@ -128,3 +128,5 @@ class ComputingCluster:
         print("cpu time / (wall time * cores):",
               self.total_cpu_time/(self.current_time*self.cores))
         print("time to run simulation:", time.time() - t0)
+        if outfile is not None:
+            self.save_md(outfile, clobber=True)
