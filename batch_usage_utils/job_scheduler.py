@@ -30,31 +30,30 @@ class Payload:
             md[task]['cpu_time'].append(cpu_time)
             md[task]['memory'].append(self.memory)
 
-    def notify_ts(self, ts):
+    def notify(self, scheduler):
         """
-        Tell the scheduler's topological sorter that all of the jobs have
-        finished processing.
+        Tell the scheduler that all of the jobs have finished processing.
         """
         for job in self.jobs:
-            ts.done(job.id)
+            scheduler.done(job.id)
 
 
 def create_payloads(job_list, payload_sizes=None):
     if payload_sizes is None:
         return [[_] for _ in job_list]
 
-    payload = defaultdict(list)
+    jobs = defaultdict(list)
     payload_list = []
     for job_id in job_list:
         task = job_id[0]
         if task in payload_sizes:
-            payload[task].append(job_id)
-            if len(payload[task]) >= payload_sizes[task]:
-                payload_list.append(payload[task])
-                del payload[task]
+            jobs[task].append(job_id)
+            if len(jobs[task]) >= payload_sizes[task]:
+                payload_list.append(jobs[task])
+                del jobs[task]
         else:
             payload_list.append([job_id])
-    payload_list.extend(payload.values())
+    payload_list.extend(jobs.values())
     return payload_list
 
 
@@ -102,9 +101,12 @@ class JobScheduler:
         for payload_id in finished_payloads:
             cores, _, payload = self.running_payloads[payload_id]
             self.total_cpu_time += cores*payload.cpu_time
-            payload.notify_ts(self.ts)
+            payload.notify(self)
             del self.running_payloads[payload_id]
         self.available_cores = self.cores - occupied_cores
+
+    def done(self, job_id):
+        self.ts.done(job_id)
 
     @property
     def md(self):
