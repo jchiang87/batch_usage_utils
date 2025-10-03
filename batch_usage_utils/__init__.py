@@ -8,7 +8,7 @@ from .plotting_utils import *
 from .core_occupancy_plots import *
 from .extract_md_files import *
 from .resource_usage import *
-from .computing_cluster import *
+from .job_scheduler import *
 from .workflow import *
 from .estimated_workflow import *
 from .visit_counts import *
