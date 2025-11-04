@@ -2,13 +2,17 @@ import os
 from collections import defaultdict
 from tqdm import tqdm
 import pandas as pd
+from lsst.afw.cameraGeom import DetectorType, FOCAL_PLANE
 import lsst.geom
+from lsst.obs.base import createInitialSkyWcsFromBoresight
+from lsst.obs.lsst import LsstCam
 from lsst.pipe.base import QuantumGraph
 import lsst.sphgeom
 from lsst.summit.utils import ConsDbClient
 
 
 __all__ = ["query_consdb", "compute_visit_overlaps",
+           "compute_visit_overlaps_from_opsim",
            "extract_visits_per_patch", "VisitCounts"]
 
 
@@ -44,6 +48,42 @@ def compute_visit_overlaps(consdb_df, skymap):
                 data['detector'].append(row.detector)
                 data['tract'].append(tract.tract_id)
                 data['patch'].append(patch.sequential_index)
+    return pd.DataFrame(data)
+
+
+def get_detector_corners(det):
+    pix_size = det.getPixelSize()
+    center = det.getCenter(FOCAL_PLANE)
+    dx = center.x/pix_size.x
+    dy = center.y/pix_size.y
+    return [lsst.geom.Point2D(_.x + dx, _.y + dy)
+            for _ in det.getBBox().getCorners()]
+
+
+def compute_visit_overlaps_from_opsim(skymap, df0, camera=None):
+    if camera is None:
+        camera = LsstCam.getCamera()
+    num_dets = len([_ for _ in camera if _.getType() == DetectorType.SCIENCE])
+    det0 = camera[num_dets // 2]
+    data = defaultdict(list)
+    for _, row in tqdm(df0.iterrows(), total=len(df0)):
+        boresight = lsst.geom.SpherePoint(row.fieldRA, row.fieldDec,
+                                          lsst.geom.degrees)
+        rotskypos = lsst.geom.Angle(row.rotSkyPos, lsst.geom.degrees)
+        wcs = createInitialSkyWcsFromBoresight(boresight, rotskypos, det0)
+        for det_id, det in enumerate(camera):
+            if det.getType() != DetectorType.SCIENCE:
+                continue
+            corners = [lsst.geom.SpherePoint(wcs.pixelToSky(_).getVector())
+                       for _ in get_detector_corners(det)]
+            tract_patch_list = skymap.findTractPatchList(corners)
+            for tract, patch_list in tract_patch_list:
+                for patch in patch_list:
+                    data['band'].append(row['filter'])
+                    data['visit'].append(row.observationId)
+                    data['detector'].append(det_id)
+                    data['tract'].append(tract.tract_id)
+                    data['patch'].append(patch.sequential_index)
     return pd.DataFrame(data)
 
 
