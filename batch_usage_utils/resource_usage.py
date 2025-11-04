@@ -100,7 +100,6 @@ class ResourceUsage:
         func = np.poly1d(np.polyfit(centers, results.statistic, deg))
         ymin = min(df[ycol])
         if make_plot:
-            plt.figure()
             plt.scatter(df[xcol], df[ycol], s=2)
             xmin, xmax, _, _ = plt.axis()
             xx = np.linspace(xmin, xmax, 100)
@@ -108,4 +107,7 @@ class ResourceUsage:
             plt.plot(xx, yy, linestyle=":", color='green')
             plt.axvline(0, color='red', linestyle='--')
             plt.axhline(0, color='red', linestyle='--')
+            plt.xlabel(xcol)
+            plt.ylabel(ycol)
+            plt.title(task)
         return lambda num_visits: float(max(func(num_visits), ymin))
