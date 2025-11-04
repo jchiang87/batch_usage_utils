@@ -19,17 +19,21 @@ __all__ = ["query_consdb", "compute_visit_overlaps",
 _TOKEN_FILE = "/sdf/home/j/jchiang/.consdb_token"
 
 
-def query_consdb(constraints, token_file=_TOKEN_FILE, instrument="lsstcam"):
+def query_consdb(constraints, token_file=_TOKEN_FILE, instrument="lsstcam",
+                 columns=None, verbose=True):
     with open(token_file) as fobj:
         token = fobj.read()
     client = ConsDbClient(
         f"https://user:{token}@usdf-rsp.slac.stanford.edu/consdb")
     schema_name = f"cdb_{instrument}"
-    columns = ("v.band, v.visit_id, v.exp_midpt_mjd, v.exp_time, "
-               "v.sky_rotation, cv.detector, cv.s_region")
+    if columns is None:
+        columns = ("v.band, v.visit_id, v.exp_midpt_mjd, v.exp_time, "
+                   "v.sky_rotation, cv.detector, cv.s_region")
     query = (f"select {columns} from {schema_name}.ccdvisit1 as cv, "
              f"{schema_name}.visit1 as v where cv.visit_id=v.visit_id "
              f"and {constraints}")
+    if verbose:
+        print(query)
     return client.query(query).to_pandas()
 
 
