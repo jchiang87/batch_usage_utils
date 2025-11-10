@@ -8,7 +8,6 @@ from lsst.obs.base import createInitialSkyWcsFromBoresight
 from lsst.obs.lsst import LsstCam
 from lsst.pipe.base import QuantumGraph
 import lsst.sphgeom
-from lsst.summit.utils import ConsDbClient
 
 
 __all__ = ["query_consdb", "compute_visit_overlaps",
@@ -21,6 +20,7 @@ _TOKEN_FILE = "/sdf/home/j/jchiang/.consdb_token"
 
 def query_consdb(constraints, token_file=_TOKEN_FILE, instrument="lsstcam",
                  columns=None, verbose=True):
+    from lsst.summit.utils import ConsDbClient
     with open(token_file) as fobj:
         token = fobj.read()
     client = ConsDbClient(
