@@ -21,7 +21,7 @@ def extract_metadata(md, data):
     # Wall times
     times = np.array([Time(info[f"{_}Utc"].split('+')[0]) for _ in ("prep", "end")])
     dt = times[1:] - times[:-1]
-    for prefix, dt in zip(("run", "init", "run"), dt):
+    for prefix, dt in zip(("run",), dt):
         data[f"{prefix}_wall_time"].append(dt.sec)
     data['start_utc'].append(times[0].mjd)
     data['end_utc'].append(times[-1].mjd)
