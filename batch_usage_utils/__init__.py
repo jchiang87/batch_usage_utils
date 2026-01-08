@@ -13,3 +13,4 @@ from .workflow import *
 from .estimated_workflow import *
 from .visit_counts import *
 from .payload_sizes import *
+from .cpu_time_summary import *
