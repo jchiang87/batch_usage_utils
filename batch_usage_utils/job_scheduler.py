@@ -57,53 +57,113 @@ def create_payloads(job_list, payload_sizes=None):
     return payload_list
 
 
-class JobScheduler:
-    def __init__(self, nodes=10, cores_per_node=120, mem_per_core=4, dt=10):
-        self.ts = None
-        self.cores = nodes*cores_per_node
-        self.available_cores = self.cores
+class ComputeNode:
+    def __init__(self, num_cores, mem_per_core, speedup=1.0):
+        self.num_cores = num_cores
         self.mem_per_core = mem_per_core
-        self.dt = dt
+        self.speedup = speedup
+        self.occupied_cores = 0
         self.running_payloads = {}
+
+    @property
+    def free_cores(self):
+        return self.num_cores - self.occupied_cores
+
+    def run_job(self, payload, start_time):
+        requested_cores = int(np.ceil(payload.memory/self.mem_per_core))
+        if requested_cores > self.free_cores:
+            return False
+        self.occupied_cores += requested_cores
+        end_time = start_time + payload.cpu_time/self.speedup
+        self.running_payloads[payload.id] = (requested_cores, end_time, payload)
+        return True
+
+
+USDF_PARTITIONS = {
+    "milano": dict(num_nodes=110,
+                   cores_per_node=120,
+                   mem_per_core=4.0,
+                   speedup=1.0),
+    "torino": dict(num_nodes=35,
+                   cores_per_node=120,
+                   mem_per_core=6.0,
+                   speedup=2.0)
+}
+
+
+class ComputeCluster:
+    def __init__(self, partitions=USDF_PARTITIONS):
+        self.nodes = {}
+        self.running_payloads = {}
+        self.cores = 0
+        for partition, config in partitions.items():
+            for i in range(config['num_nodes']):
+                node_id = f"{partition}_{i:03d}"
+                self.nodes[node_id] = ComputeNode(config['cores_per_node'],
+                                                  config['mem_per_core'],
+                                                  speedup=config['speedup'])
+                self.cores += config['cores_per_node']
+
+    def run_job(self, payload, start_time, md):
+        for node_id, node in self.nodes.items():
+            if node.run_job(payload, start_time):
+                self.running_payloads[(node_id, payload.id)] \
+                    = node.running_payloads[payload.id]
+                payload.add_metadata(md, start_time)
+                return True
+        return False
+
+    def delete_payload(self, key):
+        node_id, payload_id = key
+        cores, _, _ = self.running_payloads[key]
+        del self.running_payloads[key]
+        del self.nodes[node_id].running_payloads[payload_id]
+        self.nodes[node_id].occupied_cores -= cores
+
+
+USDF_cluster = ComputeCluster()
+
+
+class JobScheduler:
+    def __init__(self, compute_cluster=USDF_cluster, dt=10):
+        self.ts = None  # TopologicalSorter object
+        self.compute_cluster = compute_cluster
+        self.dt = dt
         self.current_time = 0
         self.total_cpu_time = 0
         self.workflow = None
         self._md = defaultdict(lambda: defaultdict(list))
+        self._largest_core_block = max(_.free_cores for _ in
+                                       compute_cluster.nodes.values())
 
     def add_payload(self, job_ids):
         payload = Payload(self.workflow, job_ids)
-        requested_cores = max(1, int(np.ceil(payload.memory/self.mem_per_core)))
-        if self.available_cores < requested_cores:
-            return False
         # Add random amount of sampling time, self.dt, to the start_time
         # to smooth out the scheduling.
         start_time = self.current_time + np.random.uniform(self.dt)
-        end_time = start_time + payload.cpu_time
-        self.running_payloads[payload.id] = (requested_cores, end_time, payload)
-        payload.add_metadata(self._md, start_time)
-        self.available_cores -= requested_cores
+        if not self.compute_cluster.run_job(payload, start_time, self._md):
+            return False
         return True
 
     def update_time(self):
         self.current_time += self.dt
-        self._compute_available_cores()
-        if sum(_[0] for _ in self.running_payloads.values()) > self.cores:
-            raise RuntimeError("Too many running payloads.")
-
-    def _compute_available_cores(self):
-        occupied_cores = 0
+        running_payloads = self.compute_cluster.running_payloads
+        # Collect the finished payloads in a separate loop since they
+        # can't be deleted from the running_payloads dict while iterating
+        # over the items.
         finished_payloads = []
-        for payload_id, (cores, end_time, _) in self.running_payloads.items():
+        for key, (_, end_time, _) in running_payloads.items():
             if end_time < self.current_time:
-                finished_payloads.append(payload_id)
-            else:
-                occupied_cores += cores
-        for payload_id in finished_payloads:
-            cores, _, payload = self.running_payloads[payload_id]
-            self.total_cpu_time += cores*payload.cpu_time
+                finished_payloads.append(key)
+        # Delete the finished payloads and update the cpu time total.
+        for key in finished_payloads:
+            cores, _, payload = running_payloads[key]
+            speedup = self.compute_cluster.nodes[key[0]].speedup
+            self.total_cpu_time += cores*payload.cpu_time/speedup
             payload.notify(self)
-            del self.running_payloads[payload_id]
-        self.available_cores = self.cores - occupied_cores
+            self.compute_cluster.delete_payload(key)
+        self._largest_core_block = max(_.free_cores for _ in
+                                       self.compute_cluster.nodes.values())
 
     def done(self, job_id):
         self.ts.done(job_id)
@@ -146,11 +206,11 @@ class JobScheduler:
             for i in range(len(job_queue) - 1, -1, -1):
                 if self.add_payload(job_queue[i]):
                     job_queue.pop(i)
-                if self.available_cores <= min_cores:
+                if self._largest_core_block <= min_cores:
                     break
             if self.current_time % 100 == 0:
                 print(self.current_time, len(job_queue),
-                      len(self.running_payloads), end=" ")
+                      len(self.compute_cluster.running_payloads), end=" ")
                 if job_queue:
                     print(job_queue[-1][0][0], flush=True)
                 else:
@@ -167,13 +227,13 @@ class JobScheduler:
                     new_payloads.reverse()
                     job_queue = new_payloads + job_queue
             if ((time_limit is not None and self.current_time > time_limit)
-                or not self.running_payloads):
+                or not self.compute_cluster.running_payloads):
                 break
             self.update_time()
         print("simulated wall time:", self.current_time/3600.)
         print("total cpu time:", self.total_cpu_time/3600.)
         print("cpu time / (wall time * cores):",
-              self.total_cpu_time/(self.current_time*self.cores))
+              self.total_cpu_time/(self.current_time*self.compute_cluster.cores))
         print("time to run simulation:", time.time() - t0)
         if outfile is not None:
             self.save_md(outfile, clobber=True)
