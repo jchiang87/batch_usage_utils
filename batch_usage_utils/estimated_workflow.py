@@ -10,7 +10,7 @@ __all__ = ["PipelineInfo", "EstimatedWorkflow"]
 
 
 class PipelineInfo:
-    def __init__(self, pipeline_yaml, repo="/repo/main"):
+    def __init__(self, pipeline_yaml, repo):
         pipeline = Pipeline.from_uri(pipeline_yaml)
         butler = daf_butler.Butler(repo)
         self.pipeline_graph = pipeline.to_graph(registry=butler.registry)
@@ -68,8 +68,8 @@ class EstimatedWorkflow(Workflow):
         self[job_id] = job
 
     @staticmethod
-    def build_from_overlaps(overlaps, pipeline_yaml, repo="/repo/main"):
-        pipeline_info = PipelineInfo(pipeline_yaml, repo=repo)
+    def build_from_overlaps(overlaps, pipeline_yaml, repo):
+        pipeline_info = PipelineInfo(pipeline_yaml, repo)
 
         # Add skymap name and instrument columns in case they aren't present.
         overlaps['skymap'] = 'lsst_cells_v1'
@@ -100,5 +100,7 @@ if __name__ == '__main__':
     pipeline_yaml = os.path.join(os.environ['DRP_PIPE_DIR'],
                                  "pipelines", "LSSTCam", "DRP.yaml")
 
-    wf = EstimatedWorkflow.build_from_overlaps(overlaps_file, pipeline_yaml)
+    repo = "drp_prep"
+    wf = EstimatedWorkflow.build_from_overlaps(overlaps_file, pipeline_yaml,
+                                               repo)
     wf.save("DM-51933_approx_wf.pickle")
