@@ -1,4 +1,5 @@
 from types import MappingProxyType
+import yaml
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import binned_statistic
@@ -40,12 +41,23 @@ NUM_VISITS_TASKS = {
 
 
 class ResourceUsage:
-    def __init__(self, md_files, num_visits_md):
+    def __init__(self, md_files, num_visits_md, resource_yaml=None):
         self.md = PipelineMetadata.read_md_files(md_files)
         self.num_visits_md = num_visits_md
         # Add specialized resource request functions.
         self._add_task_funcs()
         self._resource_cache = {}
+        self._read_memory_requests(resource_yaml)
+
+    def _read_memory_requests(self, resource_yaml):
+        self._memory_requests = {}
+        if resource_yaml is None:
+            return
+        with open(resource_yaml) as fobj:
+            data = yaml.safe_load(fobj)
+        for task, info in data['pipetask'].items():
+            # Convert from MG to GB.
+            self._memory_requests[task] = info['requestMemory']/1000.
 
     def _add_task_funcs(self):
         self._task_funcs = {}
@@ -66,9 +78,14 @@ class ResourceUsage:
 
     def __call__(self, task, num_visits):  # noqa:N803
         if task in self._task_funcs:
-            return [self._task_funcs[task][column](num_visits) for
-                    column in RESOURCE_DEFAULTS]
-        return tuple(self._fixed_resource_request(task).values())
+            cpu_time, memory = [self._task_funcs[task][column](num_visits) for
+                                column in RESOURCE_DEFAULTS]
+        else:
+            cpu_time, memory = list(self._fixed_resource_request(task).values())
+        # Use requested memory for bps yaml config if provided.
+        if task in self._memory_requests:
+            memory = self._memory_requests[task]
+        return cpu_time, memory
 
     def _fixed_resource_request(self, task):
         if task not in self._resource_cache:
