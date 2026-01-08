@@ -143,8 +143,8 @@ class JobScheduler:
         self.total_cpu_time = 0
         self.workflow = None
         self._md = defaultdict(lambda: defaultdict(list))
-        self._largest_core_block = max(_.free_cores for _ in
-                                       compute_cluster.nodes.values())
+        self._largest_core_block \
+            = compute_cluster.candidate_nodes[-1].free_cores
 
     def add_payload(self, job_ids):
         payload = Payload(self.workflow, job_ids)
@@ -172,8 +172,8 @@ class JobScheduler:
             self.total_cpu_time += cores*payload.cpu_time/speedup
             payload.notify(self)
             self.compute_cluster.delete_payload(key)
-        self._largest_core_block = max(_.free_cores for _ in
-                                       self.compute_cluster.nodes.values())
+        self._largest_core_block \
+            = self.compute_cluster.candidate_nodes[-1].free_cores
 
     def done(self, job_id):
         self.ts.done(job_id)
