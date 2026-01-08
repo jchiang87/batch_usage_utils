@@ -1,5 +1,6 @@
 import os
 from collections import defaultdict
+import bisect
 import time
 import pickle
 import uuid
@@ -58,7 +59,8 @@ def create_payloads(job_list, payload_sizes=None):
 
 
 class ComputeNode:
-    def __init__(self, num_cores, mem_per_core, speedup=1.0):
+    def __init__(self, node_id, num_cores, mem_per_core, speedup=1.0):
+        self.id = node_id
         self.num_cores = num_cores
         self.mem_per_core = mem_per_core
         self.speedup = speedup
@@ -99,18 +101,26 @@ class ComputeCluster:
         for partition, config in partitions.items():
             for i in range(config['num_nodes']):
                 node_id = f"{partition}_{i:03d}"
-                self.nodes[node_id] = ComputeNode(config['cores_per_node'],
+                self.nodes[node_id] = ComputeNode(node_id,
+                                                  config['cores_per_node'],
                                                   config['mem_per_core'],
                                                   speedup=config['speedup'])
                 self.cores += config['cores_per_node']
+        # Maintain a list of candidate nodes for running a given job
+        # in ascending order of available cores.
+        self.candidate_nodes = sorted(self.nodes.values(),
+                                      key=lambda x: x.free_cores)
 
     def run_job(self, payload, start_time, md):
-        for node_id, node in self.nodes.items():
-            if node.run_job(payload, start_time):
-                self.running_payloads[(node_id, payload.id)] \
-                    = node.running_payloads[payload.id]
-                payload.add_metadata(md, start_time)
-                return True
+        if self.candidate_nodes[-1].run_job(payload, start_time):
+            # Pop the node off the list and re-insert, ordering by free cores.
+            node = self.candidate_nodes.pop()
+            bisect.insort(self.candidate_nodes, node,
+                          key=lambda x: x.free_cores)
+            self.running_payloads[(node.id, payload.id)] \
+                = node.running_payloads[payload.id]
+            payload.add_metadata(md, start_time)
+            return True
         return False
 
     def delete_payload(self, key):
