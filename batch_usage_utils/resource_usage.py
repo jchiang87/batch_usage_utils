@@ -16,24 +16,25 @@ class UseVisitFunc(dict):
 
 
 RESOURCE_DEFAULTS = MappingProxyType({"run_cpu_time": 60, "max_rss": 4.0})
-RESOURCE_FIT_PERCENTILES = MappingProxyType({"run_cpu_time": 95, "max_rss": 95})
+#RESOURCE_FIT_PERCENTILES = MappingProxyType({"run_cpu_time": 95, "max_rss": 95})
+RESOURCE_FIT_PERCENTILES = MappingProxyType({"run_cpu_time": 50, "max_rss": 95})
 
 NUM_VISITS_TASKS = {
-    'selectDeepCoaddVisits': UseVisitFunc(True, True),
-    'selectTemplateCoaddVisits': UseVisitFunc(True, True),
+    'selectDeepCoaddVisits': UseVisitFunc(True, False),
+    'selectTemplateCoaddVisits': UseVisitFunc(True, False),
     'assembleDeepCoadd': UseVisitFunc(True, True),
     'assembleTemplateCoadd': UseVisitFunc(True, True),
     'assembleCellCoadd': UseVisitFunc(True, True),
-    'detectCoaddPeaks': UseVisitFunc(False, True),
-    'deconvolve': UseVisitFunc(False, True),
-    'deblendCoaddFootprints': UseVisitFunc(True, True),
-    'measureObjectUnforced': UseVisitFunc(True, True),
+#    'detectCoaddPeaks': UseVisitFunc(False, True),
+#    'deconvolve': UseVisitFunc(False, True),
+#    'deblendCoaddFootprints': UseVisitFunc(True, True),
+    'measureObjectUnforced': UseVisitFunc(True, False),
     'fitDeepCoaddPsfGaussians': UseVisitFunc(True, True),
-    'measureObjectForced': UseVisitFunc(True, True),
-    'associateDiaSource': UseVisitFunc(True, False),
-    'calculateDiaObject': UseVisitFunc(True, False),
+    'measureObjectForced': UseVisitFunc(True, False),
+#    'associateDiaSource': UseVisitFunc(True, False),
+#    'calculateDiaObject': UseVisitFunc(True, False),
     'standardizeObjectForcedSource': UseVisitFunc(True, False),
-    'splitPrimaryObjectForcedSource': UseVisitFunc(True, False),
+    'splitPrimaryObjectForcedSource': UseVisitFunc(True, True),
     'standardizeDiaObjectForcedSource': UseVisitFunc(True, False),
 }
 
@@ -49,6 +50,8 @@ class ResourceUsage:
     def _add_task_funcs(self):
         self._task_funcs = {}
         for task, func_status in NUM_VISITS_TASKS.items():
+            if task not in self.md:
+                continue
             task_funcs = {}
             for column in RESOURCE_DEFAULTS:
                 if func_status[column]:
