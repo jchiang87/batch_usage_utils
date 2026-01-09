@@ -13,6 +13,7 @@ __all__ = ["JobScheduler"]
 
 class Payload:
     def __init__(self, workflow, job_ids):
+        self.job_ids = job_ids
         self.jobs = [workflow.get(_) for _ in job_ids]
         self.id = uuid.uuid4()
         self.cpu_time = sum(_.cpu_time for _ in self.jobs)
@@ -39,7 +40,7 @@ class Payload:
             scheduler.done(job.id)
 
 
-def create_payloads(job_list, payload_sizes=None):
+def create_payloads(workflow, job_list, payload_sizes=None):
     if payload_sizes is None:
         return [[_] for _ in job_list]
 
@@ -55,6 +56,7 @@ def create_payloads(job_list, payload_sizes=None):
         else:
             payload_list.append([job_id])
     payload_list.extend(jobs.values())
+    payload_list = [Payload(workflow, _) for _ in payload_list]
     return payload_list
 
 
@@ -146,8 +148,7 @@ class JobScheduler:
         self._largest_core_block \
             = compute_cluster.candidate_nodes[-1].free_cores
 
-    def add_payload(self, job_ids):
-        payload = Payload(self.workflow, job_ids)
+    def add_payload(self, payload):
         # Add random amount of sampling time, self.dt, to the start_time
         # to smooth out the scheduling.
         start_time = self.current_time + np.random.uniform(self.dt)
@@ -202,7 +203,8 @@ class JobScheduler:
         print("TopologicalSorter prep time:", time.time() - t0)
 
         t0 = time.time()
-        job_queue = create_payloads(self.ts.get_ready(), payload_sizes)
+        job_queue = create_payloads(self.workflow, self.ts.get_ready(),
+                                    payload_sizes)
         if shuffle:
             np.random.shuffle(job_queue)
         else:
@@ -222,13 +224,14 @@ class JobScheduler:
                 print(self.current_time, len(job_queue),
                       len(self.compute_cluster.running_payloads), end=" ")
                 if job_queue:
-                    print(job_queue[-1][0][0], flush=True)
+                    print(job_queue[-1].job_ids[0][0], flush=True)
                 else:
                     print(flush=True)
             if outfile is not None and self.current_time % 10000 == 0:
                 print("  Saving simulation metadata...", flush=True)
                 self.save_md(outfile, clobber=True)
-            new_payloads = create_payloads(self.ts.get_ready(), payload_sizes)
+            new_payloads = create_payloads(self.workflow, self.ts.get_ready(),
+                                           payload_sizes)
             if new_payloads:
                 if shuffle:
                     job_queue.extend(new_payloads)
