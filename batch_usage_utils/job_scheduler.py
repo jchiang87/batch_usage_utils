@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from graphlib import TopologicalSorter
 
-__all__ = ["JobScheduler"]
+__all__ = ["JobScheduler", "ComputeCluster"]
 
 
 class Payload:
@@ -243,10 +243,10 @@ class JobScheduler:
                 or not self.compute_cluster.running_payloads):
                 break
             self.update_time()
-        print("simulated wall time:", self.current_time/3600.)
-        print("total cpu time:", self.total_cpu_time/3600.)
-        print("cpu time / (wall time * cores):",
-              self.total_cpu_time/(self.current_time*self.compute_cluster.cores))
-        print("time to run simulation:", time.time() - t0)
+        print(f"simulated wall time: {self.current_time/3600.:.2e} hours")
+        print(f"total cpu time: {self.total_cpu_time/3600.:.2e} hours")
+        print("cpu time / (wall time * cores): "
+              f"{self.total_cpu_time/(self.current_time*self.compute_cluster.cores):.2e}")
+        print(f"time to run simulation: {time.time() - t0} s")
         if outfile is not None:
             self.save_md(outfile, clobber=True)
