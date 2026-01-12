@@ -40,26 +40,6 @@ class Payload:
             scheduler.done(job.id)
 
 
-def create_payloads(workflow, job_list, payload_sizes=None):
-    if payload_sizes is None:
-        return [[_] for _ in job_list]
-
-    jobs = defaultdict(list)
-    payload_list = []
-    for job_id in job_list:
-        task = job_id[0]
-        if task in payload_sizes:
-            jobs[task].append(job_id)
-            if len(jobs[task]) >= payload_sizes[task]:
-                payload_list.append(jobs[task])
-                del jobs[task]
-        else:
-            payload_list.append([job_id])
-    payload_list.extend(jobs.values())
-    payload_list = [Payload(workflow, _) for _ in payload_list]
-    return payload_list
-
-
 class ComputeNode:
     def __init__(self, node_id, num_cores, mem_per_core, speedup=1.0):
         self.id = node_id
@@ -97,40 +77,70 @@ USDF_PARTITIONS = {
 
 class ComputeCluster:
     def __init__(self, partitions=USDF_PARTITIONS):
-        self.nodes = {}
+        self.partitions = partitions
+        self.nodes = defaultdict(dict)
         self.running_payloads = {}
         self.cores = 0
         for partition, config in partitions.items():
             for i in range(config['num_nodes']):
                 node_id = f"{partition}_{i:03d}"
-                self.nodes[node_id] = ComputeNode(node_id,
-                                                  config['cores_per_node'],
-                                                  config['mem_per_core'],
-                                                  speedup=config['speedup'])
+                self.nodes[partition][node_id] \
+                    = ComputeNode(node_id,
+                                  config['cores_per_node'],
+                                  config['mem_per_core'],
+                                  speedup=config['speedup'])
                 self.cores += config['cores_per_node']
-        # Maintain a list of candidate nodes for running a given job
-        # in ascending order of available cores.
-        self.candidate_nodes = sorted(self.nodes.values(),
-                                      key=lambda x: x.free_cores)
+        self.nodes = dict(self.nodes)  # convert to a dict
+        # Maintain per-partition lists of candidate nodes for running
+        # a given job. Sort these lists in ascending order of
+        # available cores.
+        self.candidate_nodes = defaultdict(list)
+        for partition, nodes in self.nodes.items():
+            self.candidate_nodes[partition] \
+                = sorted(nodes.values(), key=lambda x: x.free_cores)
+
+    def largest_core_block(self):
+        return max(_[-1].free_cores for _ in self.candidate_nodes.values())
+
+    def suggested_partitions(self, memory_request):
+        """Return list of suggested partitions, ordered by number of
+        effective cores required to handle the memory request."""
+        if len(self.partitions) == 1:
+            return list(self.partitions.keys())
+        partitions = []
+        num_cores = []
+        for partition, config in self.partitions.items():
+            partitions.append(partition)
+            num_cores.append(
+                int(np.ceil(memory_request/config['mem_per_core'])))
+        return np.array(partitions)[np.argsort(num_cores)]
+
+    def get_node(self, node_id):
+        partition = node_id.split('_')[0]
+        return self.nodes[partition][node_id]
 
     def run_job(self, payload, start_time, md):
-        if self.candidate_nodes[-1].run_job(payload, start_time):
-            # Pop the node off the list and re-insert, ordering by free cores.
-            node = self.candidate_nodes.pop()
-            bisect.insort(self.candidate_nodes, node,
-                          key=lambda x: x.free_cores)
-            self.running_payloads[(node.id, payload.id)] \
-                = node.running_payloads[payload.id]
-            payload.add_metadata(md, start_time)
-            return True
+        for partition in payload.suggested_partitions:
+            candidate_nodes = self.candidate_nodes[partition]
+            if candidate_nodes[-1].run_job(payload, start_time):
+                # Pop the node off the list and re-insert, ordering by
+                # free cores.
+                node = candidate_nodes.pop()
+                bisect.insort(candidate_nodes, node,
+                              key=lambda x: x.free_cores)
+                self.running_payloads[(node.id, payload.id)] \
+                    = node.running_payloads[payload.id]
+                payload.add_metadata(md, start_time)
+                return True
         return False
 
     def delete_payload(self, key):
         node_id, payload_id = key
         cores, _, _ = self.running_payloads[key]
         del self.running_payloads[key]
-        del self.nodes[node_id].running_payloads[payload_id]
-        self.nodes[node_id].occupied_cores -= cores
+        node = self.get_node(node_id)
+        del node.running_payloads[payload_id]
+        node.occupied_cores -= cores
 
 
 USDF_cluster = ComputeCluster()
@@ -145,8 +155,7 @@ class JobScheduler:
         self.total_cpu_time = 0
         self.workflow = None
         self._md = defaultdict(lambda: defaultdict(list))
-        self._largest_core_block \
-            = compute_cluster.candidate_nodes[-1].free_cores
+        self._largest_core_block = compute_cluster.largest_core_block()
 
     def add_payload(self, payload):
         # Add random amount of sampling time, self.dt, to the start_time
@@ -169,12 +178,11 @@ class JobScheduler:
         # Delete the finished payloads and update the cpu time total.
         for key in finished_payloads:
             cores, _, payload = running_payloads[key]
-            speedup = self.compute_cluster.nodes[key[0]].speedup
+            speedup = self.compute_cluster.get_node(key[0]).speedup
             self.total_cpu_time += cores*payload.cpu_time/speedup
             payload.notify(self)
             self.compute_cluster.delete_payload(key)
-        self._largest_core_block \
-            = self.compute_cluster.candidate_nodes[-1].free_cores
+        self._largest_core_block = self.compute_cluster.largest_core_block()
 
     def done(self, job_id):
         self.ts.done(job_id)
@@ -191,6 +199,28 @@ class JobScheduler:
         with open(outfile, "wb") as fobj:
             pickle.dump(md, fobj)
 
+    def create_payloads(self, job_list, payload_sizes):
+        if payload_sizes is None:
+            payload_list = [Payload(self.workflow, [_]) for _ in job_list]
+        else:
+            jobs = defaultdict(list)
+            payload_list = []
+            for job_id in job_list:
+                task = job_id[0]
+                if task in payload_sizes:
+                    jobs[task].append(job_id)
+                    if len(jobs[task]) >= payload_sizes[task]:
+                        payload_list.append(jobs[task])
+                        del jobs[task]
+                else:
+                    payload_list.append([job_id])
+            payload_list.extend(jobs.values())
+            payload_list = [Payload(self.workflow, _) for _ in payload_list]
+        for payload in payload_list:
+            payload.suggested_partitions \
+                = self.compute_cluster.suggested_partitions(payload.memory)
+        return payload_list
+
     def submit(self, workflow, time_limit=None, outfile=None, shuffle=False,
                min_cores=5, payload_sizes=None):
         t0 = time.time()
@@ -203,8 +233,7 @@ class JobScheduler:
         print("TopologicalSorter prep time:", time.time() - t0)
 
         t0 = time.time()
-        job_queue = create_payloads(self.workflow, self.ts.get_ready(),
-                                    payload_sizes)
+        job_queue = self.create_payloads(self.ts.get_ready(), payload_sizes)
         if shuffle:
             np.random.shuffle(job_queue)
         else:
@@ -230,8 +259,8 @@ class JobScheduler:
             if outfile is not None and self.current_time % 10000 == 0:
                 print("  Saving simulation metadata...", flush=True)
                 self.save_md(outfile, clobber=True)
-            new_payloads = create_payloads(self.workflow, self.ts.get_ready(),
-                                           payload_sizes)
+            new_payloads = self.create_payloads(self.ts.get_ready(),
+                                                payload_sizes)
             if new_payloads:
                 if shuffle:
                     job_queue.extend(new_payloads)
