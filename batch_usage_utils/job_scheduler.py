@@ -8,7 +8,19 @@ import numpy as np
 import pandas as pd
 from graphlib import TopologicalSorter
 
-__all__ = ["JobScheduler", "ComputeCluster"]
+__all__ = ["JobScheduler", "ComputeCluster", "USDF_PARTITIONS"]
+
+
+USDF_PARTITIONS = {
+    "milano": dict(num_nodes=110,
+                   cores_per_node=120,
+                   mem_per_core=4.0,
+                   speedup=1.0),
+    "torino": dict(num_nodes=35,
+                   cores_per_node=120,
+                   mem_per_core=6.0,
+                   speedup=2.0)
+}
 
 
 class Payload:
@@ -61,18 +73,6 @@ class ComputeNode:
         end_time = start_time + payload.cpu_time/self.speedup
         self.running_payloads[payload.id] = (requested_cores, end_time, payload)
         return True
-
-
-USDF_PARTITIONS = {
-    "milano": dict(num_nodes=110,
-                   cores_per_node=120,
-                   mem_per_core=4.0,
-                   speedup=1.0),
-    "torino": dict(num_nodes=35,
-                   cores_per_node=120,
-                   mem_per_core=6.0,
-                   speedup=2.0)
-}
 
 
 class ComputeCluster:

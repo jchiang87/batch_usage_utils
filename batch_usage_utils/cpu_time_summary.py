@@ -5,13 +5,40 @@ import pandas as pd
 from .visit_counts import VisitCounts
 from .estimated_workflow import PipelineInfo
 
+
 __all__ = ["cpu_time_summary"]
 
 
-def num_cores(memory, mem_per_core=6.0):
-    if memory < mem_per_core:
-        return 1.0
-    return np.ceil(memory/mem_per_core)
+USDF_PARTITIONS = {
+    "milano": dict(num_nodes=110,
+                   cores_per_node=120,
+                   mem_per_core=4.0,
+                   speedup=1.0),
+    "torino": dict(num_nodes=35,
+                   cores_per_node=120,
+                   mem_per_core=6.0,
+                   speedup=2.0)
+}
+
+
+class NodeServer:
+    def __init__(self, partitions=USDF_PARTITIONS):
+        self.partitions = partitions
+        self.node_types = []
+        weights = []
+        for partition, config in partitions.items():
+            self.node_types.append(partition)
+            weights.append(np.prod(list(config.values())))
+        weights = np.array(weights)
+        self.weights = weights/sum(weights)
+
+    def resources(self, cpu_time, memory, node_type=None):
+        if node_type is None:
+            node_type = np.random.choice(self.node_types, p=self.weights)
+        config = self.partitions[node_type]
+        cpu = cpu_time/config['speedup']
+        num_cores = int(np.ceil(memory/config['mem_per_core']))
+        return cpu, num_cores, node_type
 
 
 def relevant_dimensions(dimensions):
@@ -29,12 +56,14 @@ def relevant_dimensions(dimensions):
     return my_dims
 
 
-def cpu_time_summary(overlap_file, stage_yamls, resource_usage,
+def cpu_time_summary(overlaps, visit_counts, stage_yamls, resource_usage,
+                     partitions=USDF_PARTITIONS,
                      repo="dp2_prep", outfile=None, verbose=False):
-    cpu_time = defaultdict(lambda: 0)
+    for config in partitions.values():
+        config['num_cores'] = config['num_nodes']*config['cores_per_node']
+    node_server = NodeServer(partitions=partitions)
+    node_type_cpu_time = defaultdict(lambda : defaultdict(lambda: 0))
     job_count = defaultdict(lambda: 0)
-    overlaps = pd.read_parquet(overlap_file)
-    vc = VisitCounts(overlap_file)
     for stage, stage_yaml in stage_yamls.items():
         if verbose:
             print(stage, flush=True)
@@ -51,9 +80,10 @@ def cpu_time_summary(overlap_file, stage_yamls, resource_usage,
                     df = pd.DataFrame(df)
                     df['band'] = None
                 for args in zip(df['patch'], df['tract'], df['band']):
-                    num_visits = vc(*args)
-                    job_cpu_time, job_memory = resource_usage(task, num_visits)
-                    cpu_time[task] += num_cores(job_memory)*job_cpu_time
+                    num_visits = visit_counts(*args)
+                    job_cpu_time, num_cores, node_type = node_server.resources(
+                        *resource_usage(task, num_visits))
+                    node_type_cpu_time[node_type][task] += num_cores*job_cpu_time
                     job_count[task] += 1
             else:
                 # Can use the mean values for instances.
@@ -61,12 +91,24 @@ def cpu_time_summary(overlap_file, stage_yamls, resource_usage,
                     num_jobs = 1
                 else:
                     num_jobs = len(df)
-                job_cpu_time, job_memory = resource_usage(task, None)
-                cpu_time[task] += num_jobs*num_cores(job_memory)*job_cpu_time
+                for node_type, weight in zip(node_server.node_types,
+                                             node_server.weights):
+                    job_cpu_time, num_cores, node_type = node_server.resources(
+                        *resource_usage(task, None), node_type=node_type)
+                    node_type_cpu_time[node_type][task] += weight*num_jobs*num_cores*job_cpu_time
                 job_count[task] += num_jobs
+    wall_time = defaultdict(lambda : 0)
+    cpu_time = defaultdict(lambda : 0)
+    for node_type in node_type_cpu_time:
+        for task, value in node_type_cpu_time[node_type].items():
+            cpu_time[task] += value
+            wall_time_est = value/partitions[node_type]["num_cores"]
+            if wall_time_est > wall_time[task]:
+                wall_time[task] = wall_time_est
     tasks = list(cpu_time.keys())
     df0 = pd.DataFrame(dict(task=tasks,
                             cpu_time=list(cpu_time.values()),
+                            wall_time=list(wall_time.values()),
                             num_jobs=[job_count[_] for _ in tasks]))
     if outfile is not None:
         df0.to_parquet(outfile)
