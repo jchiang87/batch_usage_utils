@@ -7,24 +7,44 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import lsst.daf.butler as daf_butler
-from batch_usage_utils import PipelineMetadata, extract_md_json,\
+from batch_usage_utils import PipelineMetadata, extract_md_json, \
     extract_metadata, PipelineInfo
 
 
-def extract_from_refs(butler, refs):
+def extract_from_provenance_graph(butler, refs, disable_progress=True):
+    data = defaultdict(list)
+    id_map = defaultdict(set)
+    ref_map = {}
+    for ref in refs:
+        id_map[ref.run].add(ref.id)
+        ref_map[ref.id] = ref
+    for collection, ids in tqdm(id_map.items(), disable=disable_progress):
+        md_dict = butler.get("run_provenance.metadata",
+                             parameters={"datasets": ids},
+                             collections=[collection])
+        for _id, md_attempts in md_dict.items():
+            ref = ref_map[_id]
+            try:
+                extract_metadata(md_attempts[-1], data)
+            except Exception as eobj:
+                raise eobj
+            else:
+                dataId = (ref.dataId.to_simple()  # noqa:N806
+                          .model_dump()['dataId'])
+                for key, value in dataId.items():
+                    data[key].append(value)
+    return pd.DataFrame(data), []
+
+
+def extract_from_refs(butler, refs, disable_progress=True):
     data = defaultdict(list)
     missing_files = []
-    for ref in refs:
+    for ref in tqdm(refs, disable=disable_progress):
         md = butler.get(ref)
         try:
             extract_metadata(md, data)
         except Exception as eobj:
             raise eobj
-#        try:
-#            md_file = butler.getURI(ref).path
-#            data = extract_md_json(md_file, data)
-#        except FileNotFoundError:
-#            missing_files.append(ref)
         else:
             dataId = ref.dataId.to_simple().model_dump()['dataId']  # noqa:N806
             for key, value in dataId.items():
@@ -33,7 +53,8 @@ def extract_from_refs(butler, refs):
 
 
 def extract_md_files(repo, collection, tasks, outfile=None, where="",
-                     nproc=10):
+                     nproc=10, extraction_func=extract_from_provenance_graph,
+                     partition_factor=1):
     butler = daf_butler.Butler(repo, collections=[collection])
     if outfile is None:
         test_name = collection.split("/")[2]
@@ -56,17 +77,23 @@ def extract_md_files(repo, collection, tasks, outfile=None, where="",
             print(f"   skipping {task}")
             continue
         if nproc == 1:
-            df, missing_files = extract_from_refs(butler, refs)
+            df, missing_files = extraction_func(butler, refs)
             df_list = [df]
         else:
             missing_files = []
             df_list = []
-            indices = np.linspace(0, len(refs), nproc, dtype=int)
+            ntranches = nproc * partition_factor
+            indices = np.linspace(0, len(refs), ntranches, dtype=int)
             with multiprocessing.Pool(processes=nproc) as pool:
                 workers = []
                 for imin, imax in pairwise(indices):
-                    workers.append(pool.apply_async(
-                        extract_from_refs, (butler, refs[imin:imax])))
+                    disable_progress = (imin != 0)
+                    workers.append(
+                        pool.apply_async(
+                            extraction_func, (butler, refs[imin:imax]),
+                            {"disable_progress": disable_progress}
+                        )
+                    )
                 pool.close()
                 pool.join()
                 for worker in workers:
@@ -88,7 +115,7 @@ def get_task_subsets(pipeline_yaml=None, repo="dp2_prep"):
         pipeline_yaml = os.path.join(os.environ["DRP_PIPE_DIR"],
                                      "pipelines", "LSSTCam",
                                      "DRP.yaml")
-    pipeline_info = PipelineInfo(pipeline_yaml)
+    pipeline_info = PipelineInfo(pipeline_yaml, repo)
     pg = pipeline_info.pipeline_graph
     stages = sorted(_ for _ in pg.task_subsets.keys() if _.startswith("stage"))
 
@@ -97,14 +124,14 @@ def get_task_subsets(pipeline_yaml=None, repo="dp2_prep"):
 
 
 if __name__ == "__main__":
-    repo = "/repo/main"
-    tasks = get_task_subsets(repo=repo)
+    tasks = get_task_subsets()
+    repo = "dp2_prep"
     butler = daf_butler.Butler(repo)
-
-    collection = "LSSTCam/runs/DRP/20250421_20250921/w_2025_41/DM-52836"
 
     stage = sys.argv[1]
     assert stage in tasks
+
+    collection = f"LSSTCam/runs/DRP/DP2/v30_0_0/DM-53881/{stage}"
 
     extract_md_files(repo, collection, tasks[stage],
                      outfile=f"{stage}_task_md.pickle",
