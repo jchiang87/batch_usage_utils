@@ -252,17 +252,16 @@ def extract_md_files(repo, collection, tasks, outfile=None, where="",
     return dfs
 
 
-def get_task_subsets(pipeline_yaml=None, repo="dp2_prep"):
+def get_task_subsets(repo, pipeline_yaml=None):
     if pipeline_yaml is None:
         pipeline_yaml = os.path.join(os.environ["DRP_PIPE_DIR"],
                                      "pipelines", "LSSTCam",
                                      "DRP.yaml")
     pipeline_info = PipelineInfo(pipeline_yaml, repo)
     pg = pipeline_info.pipeline_graph
-    stages = sorted(_ for _ in pg.task_subsets.keys() if _.startswith("stage"))
+    stages = sorted(_ for _ in pg.task_subsets.keys() if _.startswith("st"))
 
-    tasks = {stage[:len("stage1")]: list(pg.task_subsets[stage])
-             for stage in stages}
+    tasks = {stage: list(pg.task_subsets[stage]) for stage in stages}
     return tasks
 
 
@@ -272,23 +271,32 @@ if __name__ == "__main__":
     parser.add_argument("repo", help="Data repository")
     parser.add_argument("collection",
                         help=("Collection containing the metadata"))
+    parser.add_argument("--pipeline_yaml", default=None,
+                        help=("Pipeline yaml file. If None, then the "
+                              "DRP.yaml for LSSTCam will be used."))
     parser.add_argument("--stage", default=None,
                         help=("Pipeline stage or step to extract. If None, "
                               "then all stages/steps will be extracted, with "
                               "one pickle file for each."))
-    parser.add_argument("--nproc", default=1,
+    parser.add_argument("--nproc", default=1, type=int,
                         help="Number of processes to use for multiprocessing")
+    parser.add_argument("--use_provenance_graph", action="store_true",
+                        help="Use provenance graph for extracting metadata")
 
     args = parser.parse_args()
 
     repo = args.repo
     collection = args.collection
-    tasks = get_task_subsets(repo=repo)
+    tasks = get_task_subsets(repo, pipeline_yaml=args.pipeline_yaml)
     if args.stage is None:
         # extract for all stages/steps in the pipeline"
         stages = [_ for _ in tasks if _.startswith("st")]
     else:
         stages = [args.stage]
+    if args.use_provenance_graph:
+        extraction_func = extract_from_provenance_graph
+    else:
+        extraction_func = extract_from_refs
 
     butler = daf_butler.Butler(repo)
 
@@ -296,4 +304,5 @@ if __name__ == "__main__":
         print("Working on {stage}")
         extract_md_files(repo, collection, tasks[stage],
                          outfile=f"{stage}_task_md.pickle",
+                         extraction_func=extraction_func,
                          nproc=args.nproc)
