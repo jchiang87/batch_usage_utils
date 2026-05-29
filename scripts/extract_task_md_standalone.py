@@ -279,7 +279,7 @@ if __name__ == "__main__":
     parser.add_argument("--nproc", default=1,
                         help="Number of processes to use for multiprocessing")
 
-    args = parser.parser_args()
+    args = parser.parse_args()
 
     repo = args.repo
     collection = args.collection
