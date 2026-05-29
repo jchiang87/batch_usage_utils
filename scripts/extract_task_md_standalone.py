@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 Standalone version of task metadata extraction script, i.e., no dependence
 on batch_usage_utils.
